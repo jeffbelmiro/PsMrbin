@@ -1,0 +1,7 @@
+.git
+**/bin
+**/obj
+tests
+.env
+work
+**/TestResults

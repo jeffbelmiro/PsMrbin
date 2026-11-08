@@ -1,0 +1,72 @@
+using System.Text;
+using Microsoft.Extensions.Options;
+using StackExchange.Redis;
+using TempBin.Models;
+using TempBin.Services;
+
+namespace TempBin.Storage;
+
+public interface IPasteStore
+{
+    Task<Paste?> TryCreateAsync(string slug, string content);
+    Task<PasteLookup> FindAsync(string slug);
+    Task<bool> IsHealthyAsync();
+}
+
+public sealed class TempBinOptions
+{
+    public string PublicOrigin { get; set; } = "http://localhost:8080";
+    public string Redis { get; set; } = "localhost:6379,abortConnect=false";
+    public string KeyPrefix { get; set; } = "tempbin:";
+    public static bool ValidOrigin(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo)
+        && uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
+}
+
+// Redis TIME is authoritative: creation, expiry, and reads use the same clock.
+// Both keys share a hash tag so the scripts also work on Redis Cluster.
+public sealed class RedisPasteStore(IConnectionMultiplexer connection, IOptions<TempBinOptions> options) : IPasteStore
+{
+    private readonly IDatabase db = connection.GetDatabase();
+    private RedisKey[] Keys(string slug) => [$"{options.Value.KeyPrefix}{{{slug}}}:data", $"{options.Value.KeyPrefix}{{{slug}}}:seen"];
+    private const string CreateScript = """
+        if redis.call('EXISTS', KEYS[1], KEYS[2]) > 0 then return nil end
+        local t = redis.call('TIME')
+        local now = t[1] * 1000 + math.floor(t[2] / 1000)
+        redis.call('HSET', KEYS[1], 'content', ARGV[1], 'created', now, 'expires', now + 1800000, 'size', ARGV[2], 'version', 1)
+        redis.call('PEXPIREAT', KEYS[1], now + 1800000)
+        redis.call('SET', KEYS[2], '1', 'PXAT', now + 86400000)
+        return {tostring(now), tostring(now + 1800000)}
+        """;
+    private const string ReadScript = """
+        if redis.call('EXISTS', KEYS[1]) == 0 then
+            if redis.call('EXISTS', KEYS[2]) == 1 then return {'expired'} end
+            return {'missing'}
+        end
+        local t = redis.call('TIME')
+        local now = t[1] * 1000 + math.floor(t[2] / 1000)
+        local expires = redis.call('HGET', KEYS[1], 'expires')
+        if tonumber(expires) <= now then redis.call('DEL', KEYS[1]); return {'expired'} end
+        return {'found', redis.call('HGET', KEYS[1], 'content'), redis.call('HGET', KEYS[1], 'created'), expires,
+            redis.call('HGET', KEYS[1], 'size'), redis.call('HGET', KEYS[1], 'version')}
+        """;
+
+    public async Task<Paste?> TryCreateAsync(string slug, string content)
+    {
+        var size = Encoding.UTF8.GetByteCount(content);
+        var result = await db.ScriptEvaluateAsync(CreateScript, Keys(slug), [content, size]);
+        if (result.IsNull) return null;
+        var values = (RedisResult[])result!;
+        return new Paste(slug, content, DateTimeOffset.FromUnixTimeMilliseconds((long)values[0]),
+            DateTimeOffset.FromUnixTimeMilliseconds((long)values[1]), size);
+    }
+    public async Task<PasteLookup> FindAsync(string slug)
+    {
+        var values = (RedisResult[])(await db.ScriptEvaluateAsync(ReadScript, Keys(slug)))!;
+        var state = (string?)values[0];
+        if (state != "found") return new(state == "expired" ? PasteState.Expired : PasteState.Missing);
+        return new(PasteState.Found, new Paste(slug, (string)values[1]!, DateTimeOffset.FromUnixTimeMilliseconds((long)values[2]),
+            DateTimeOffset.FromUnixTimeMilliseconds((long)values[3]), (int)values[4], (int)values[5]));
+    }
+    public async Task<bool> IsHealthyAsync() { await db.PingAsync(); return true; }
+}

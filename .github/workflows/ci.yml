@@ -1,0 +1,39 @@
+name: Build, test and Docker
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet restore
+      - run: dotnet build -c Release --no-restore
+      - run: dotnet test -c Release --no-build --logger trx
+        env:
+          TEMPBIN_TEST_REDIS: localhost:6379
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build --wait
+      - name: Smoke test Docker stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail http://localhost:8080/health/ready
+          result=$(curl --fail -X POST http://localhost:8080/api/v1/pastes -H 'Content-Type: text/plain' --data-binary 'Docker smoke test')
+          slug=$(echo "$result" | jq -r .slug)
+          test "$(curl --fail "http://localhost:8080/raw/$slug")" = 'Docker smoke test'
+          curl --fail "http://localhost:8080/$slug" > /dev/null
+          curl --fail "http://localhost:8080/api/v1/pastes/$slug" | jq -e '.content == "Docker smoke test"'
+          test "$(curl --fail "http://localhost:8080/download/$slug")" = 'Docker smoke test'
+      - if: always()
+        run: docker compose down

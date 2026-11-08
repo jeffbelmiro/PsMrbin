@@ -1,0 +1,49 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      TempBin__Redis: redis:6379,abortConnect=false
+      TempBin__PublicOrigin: ${PUBLIC_ORIGIN:-http://localhost:8080}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 1.0
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "dotnet", "TempBin.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [frontend, storage]
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+    mem_limit: 192m
+    cpus: 0.5
+    # /data is RAM-backed even though the upstream image declares VOLUME /data.
+    tmpfs:
+      - /data:size=16m,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [storage]
+networks:
+  frontend:
+  storage:
+    internal: true
