@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using TempBin.Models;
+using TempBin.Services;
 
 namespace TempBin.Web;
 
@@ -15,7 +16,7 @@ public static class Html
         <main>{{body}}</main><footer><a class="brand-small" href="/">TempBin</a><span>Feito para partilhar. Concebido para desaparecer.</span><a href="/openapi">OpenAPI ↗</a></footer></body></html>
         """;
 
-    public static string Home(string origin) => Shell($$"""
+    public static string Home(string origin, NetcatOptions? netcat = null) => Shell($$"""
         <section class="intro"><div><p class="eyebrow"><span class="tiny-line"></span> UMA IDEIA, UM LINK, 30 MINUTOS</p>
         <h1>O seu texto.<br><span>De passagem.</span></h1><p class="lead">Cole. Guarde. Partilhe. Um espaço temporário para texto simples,<br class="desktop"> sem registo e sem complicações.</p></div>
         <div class="time-card"><span class="clock">◷</span><strong>30<span>min</span></strong><p>É tudo o que fica.<br>Depois, desaparece.</p></div></section>
@@ -25,7 +26,7 @@ public static class Html
         <div class="editor-controls"><div><label for="slug-length">Comprimento do link</label><div class="select-wrap"><select id="slug-length" name="slug_length">{{string.Join("", Enumerable.Range(8, 9).Select(n => $"<option value=\"{n}\">{n} caracteres{(n == 8 ? " · padrão" : "")}</option>"))}}</select><span>8–16, letras e números</span></div></div><button id="save" class="primary" type="submit">Guardar e gerar link <span>↗</span></button></div>
         <p id="form-error" class="error" role="alert" hidden></p></form></section>
         <aside class="side"><section class="card rules"><p class="eyebrow">SIMPLES POR DEFINIÇÃO</p><h2>Partilhe o momento.<br>Não o histórico.</h2>
-        <div class="rule"><span>01</span><div><h3>Expira em 30 minutos</h3><p>O prazo começa ao guardar. Ler não prolonga a validade. Sem edição nem recuperação.</p></div></div>
+        <div class="rule"><span>01</span><div><h3>Expira em 30 minutos</h3><p>O prazo começa ao guardar. Ler não prolonga a validade. O mesmo IP pode eliminar nos primeiros 10 minutos. Sem edição nem recuperação.</p></div></div>
         <div class="rule"><span>02</span><div><h3>Um link, vários caminhos</h3><p>Aceda pela página, texto puro, JSON ou download .txt. Funciona com curl e API REST.</p></div></div>
         <div class="rule"><span>03</span><div><h3>Até 256 KiB por texto</h3><p>262 144 bytes em UTF-8. Sem login, email ou cookies de autenticação.</p></div></div>
         <div class="notice"><span>!</span><p><strong>Um link não é um segredo.</strong> Quem o tiver pode ler. Não publique palavras-passe, tokens ou informação sensível.</p></div></section></aside></div>
@@ -33,7 +34,24 @@ public static class Html
         <p>Envie texto ou um ficheiro. A API devolve todos os links e a hora exata de expiração.</p>
         <div class="command-row"><code id="curl-example">curl -X POST '{{E(origin)}}/api/v1/pastes' -H 'Content-Type: text/plain; charset=utf-8' --data-binary 'Olá, mundo!'</code><button type="button" data-copy="curl-example" class="copy">Copiar</button></div>
         <div class="terminal-notes"><span><b>Ficheiro</b> Substitua o texto por <code>--data-binary @exemplo.txt</code></span><span><b>JSON</b> <code>{"content":"Olá!","slug_length":8}</code> com <code>Content-Type: application/json</code></span></div></section>
+        {{NetcatGuide(origin, netcat)}}
         """);
+
+    private static string NetcatGuide(string origin, NetcatOptions? netcat)
+    {
+        if (netcat?.Enabled != true) return "";
+        var host = netcat.PublicHost ?? new Uri(origin).Host;
+        var target = $"{host} {netcat.PublicPort}";
+        return $$"""
+            <section class="terminal card"><div class="terminal-title"><div><span class="terminal-icon">|</span><h2>Do terminal para um link.</h2></div><span class="muted">NETCAT · TCP {{netcat.PublicPort}}</span></div>
+            <p>Envie texto, ficheiros ou a saída de um comando. Receba um link de texto puro, pronto para curl.</p>
+            <div class="command-row"><code id="nc-example">echo 'Olá, mundo!' | nc {{E(target)}}</code><button class="copy" data-copy="nc-example">Copiar</button></div>
+            <div class="terminal-notes"><span><b>Ficheiro</b> <code>cat exemplo.txt | nc {{E(target)}}</code></span><span><b>Comando</b> <code>ls -la | nc {{E(target)}}</code></span></div>
+            <div class="command-row"><code id="nc-alias">alias tb='nc {{E(target)}}'</code><button class="copy" data-copy="nc-alias">Copiar alias</button></div>
+            <p>Adicione o alias ao .bashrc ou .zshrc e use <code>ls -la | tb</code>. Sem nc? Use <code>comando | curl -H 'Content-Type: text/plain' --data-binary @- '{{E(origin)}}/api/v1/pastes'</code>.</p>
+            <p>TCP simples não cifra o envio. Para dados em trânsito por HTTPS, use curl. O envio termina ao fechar a escrita ou após {{netcat.IdleTimeoutMilliseconds / 1000.0}} segundos sem dados; máximo de {{netcat.TotalTimeoutSeconds}} segundos e 256 KiB.</p></section>
+            """;
+    }
 
     public static string Result(Paste paste, string origin)
     {
@@ -49,10 +67,13 @@ public static class Html
             <div class="link-grid">{{Link("Texto puro", "raw-url", raw)}}{{Link("API JSON", "api-url", api)}}{{Link("Download .txt", "download-url", download)}}</div>
             <div class="command-row"><code id="read-curl">curl '{{E(raw)}}'</code><button class="copy" data-copy="read-curl">Copiar curl</button></div>
             <p class="expiry">Expira em <time id="expires-at" datetime="{{E(expiry)}}">{{E(expiry)}}</time> · {{paste.SizeBytes.ToString("N0", CultureInfo.GetCultureInfo("pt-PT"))}} bytes · Sem renovação</p></section>
-            <section class="card preview-card" id="preview"><div class="panel-heading"><h2>Pré-visualização</h2><a href="{{E(download)}}">Descarregar .txt ↓</a></div><pre id="paste-content">{{E(paste.Content)}}</pre></section>
+            <section class="card preview-card" id="preview"><div class="panel-heading"><h2>Pré-visualização</h2><button class="copy" id="toggle-lines" aria-pressed="false">Números de linha</button><a href="{{E(download)}}">Descarregar .txt ↓</a></div><pre id="paste-content">{{E(paste.Content)}}</pre></section>
+            <section class="terminal card"><h2>Partilhou por engano?</h2><p>O IP que criou o texto pode eliminá-lo nos primeiros 10 minutos. A eliminação é imediata e não pode ser revertida.</p>
+            <button class="copy" id="delete-paste" data-slug="{{E(paste.Slug)}}">Eliminar este texto</button><p id="delete-status" role="status" hidden></p>
+            <div class="command-row"><code id="delete-curl">curl -X POST '{{E(origin)}}/delete?slug={{E(paste.Slug)}}'</code><button class="copy" data-copy="delete-curl">Copiar curl</button></div></section>
             <div class="result-bottom"><p>Quem tem o link pode ler. Após a expiração, o texto não pode ser recuperado.</p><a class="primary" href="/">Criar outro texto +</a></div>
             """, "Texto guardado");
     }
     private static string Link(string title, string id, string url) => $"<div class=\"link-item\"><span>{E(title)}</span><a id=\"{id}\" href=\"{E(url)}\">{E(url)}</a><button class=\"copy\" data-copy=\"{id}\" aria-label=\"Copiar {E(title)}\">Copiar</button></div>";
-    public static string Error(bool expired) => Shell($"<section class=\"result-intro\"><p class=\"eyebrow\">{(expired ? "410 · PRAZO TERMINADO" : "404 · LINK DESCONHECIDO")}</p><h1>{(expired ? "Este texto<br><span>já passou.</span>" : "Nada por aqui.")}</h1><p class=\"lead\">{(expired ? "Os 30 minutos terminaram. O conteúdo foi eliminado e não pode ser recuperado." : "O link não existe, está incorreto ou o seu marcador de expiração já foi eliminado.")}</p><a class=\"primary\" href=\"/\">Criar um texto ↗</a></section>");
+    public static string Error(bool expired) => Shell($"<section class=\"result-intro\"><p class=\"eyebrow\">{(expired ? "410 · TEXTO INDISPONÍVEL" : "404 · LINK DESCONHECIDO")}</p><h1>{(expired ? "Este texto<br><span>já passou.</span>" : "Nada por aqui.")}</h1><p class=\"lead\">{(expired ? "O texto expirou ou foi eliminado pelo autor. O conteúdo não pode ser recuperado." : "O link não existe, está incorreto ou o seu marcador de expiração já foi eliminado.")}</p><a class=\"primary\" href=\"/\">Criar um texto ↗</a></section>");
 }

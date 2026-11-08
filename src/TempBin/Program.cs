@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TempBin.Endpoints;
@@ -22,7 +23,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(o => { o.Limits.MaxRequestBodySize = 1600000; o.Limits.MaxConcurrentConnections = 256; });
 builder.Services.AddOptions<TempBinOptions>().BindConfiguration("TempBin")
     .Validate(o => TempBinOptions.ValidOrigin(o.PublicOrigin), "PublicOrigin deve ser uma origem HTTP(S), sem caminho.")
-    .Validate(o => !string.IsNullOrWhiteSpace(o.KeyPrefix), "KeyPrefix é obrigatório.").ValidateOnStart();
+    .Validate(o => !string.IsNullOrWhiteSpace(o.KeyPrefix), "KeyPrefix é obrigatório.")
+    .Validate(o => o.KnownProxies.All(ip => System.Net.IPAddress.TryParse(ip, out _)), "KnownProxies deve conter apenas endereços IP.")
+    .Validate(o => ClientIdentity.ValidKey(o.DeletionKey), "DeletionKey deve conter pelo menos 32 bytes em Base64.").ValidateOnStart();
+builder.Services.AddOptions<NetcatOptions>().BindConfiguration("Netcat")
+    .Validate(o => System.Net.IPAddress.TryParse(o.ListenAddress, out _) && o.Port is >= 1 and <= 65535 && o.PublicPort is >= 1 and <= 65535
+        && o.IdleTimeoutMilliseconds is >= 100 and <= 10000 && o.TotalTimeoutSeconds is >= 1 and <= 60,
+        "Configuração Netcat inválida.")
+    .Validate(o => o.PublicHost is null || Uri.CheckHostName(o.PublicHost) != UriHostNameType.Unknown, "PublicHost deve ser um hostname ou IP.").ValidateOnStart();
+builder.Services.AddSingleton<ClientIdentity>();
+builder.Services.AddHostedService<NetcatServer>();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(sp.GetRequiredService<IOptions<TempBinOptions>>().Value.Redis));
 builder.Services.AddSingleton<IPasteStore, RedisPasteStore>();
@@ -48,6 +58,14 @@ builder.Services.AddRateLimiter(o =>
         new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 var app = builder.Build();
+var knownProxies = app.Services.GetRequiredService<IOptions<TempBinOptions>>().Value.KnownProxies;
+if (knownProxies.Length > 0)
+{
+    var forwarded = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto, ForwardLimit = 1 };
+    forwarded.KnownNetworks.Clear(); forwarded.KnownProxies.Clear();
+    foreach (var ip in knownProxies) forwarded.KnownProxies.Add(System.Net.IPAddress.Parse(ip));
+    app.UseForwardedHeaders(forwarded);
+}
 app.Use(async (context, next) =>
 {
     context.Response.Headers.CacheControl = "no-store";

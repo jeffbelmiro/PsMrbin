@@ -35,5 +35,13 @@ jobs:
           curl --fail "http://localhost:8080/$slug" > /dev/null
           curl --fail "http://localhost:8080/api/v1/pastes/$slug" | jq -e '.content == "Docker smoke test"'
           test "$(curl --fail "http://localhost:8080/download/$slug")" = 'Docker smoke test'
+          test "$(curl --fail "http://localhost:8080/$slug")" = 'Docker smoke test'
+          raw_url=$(printf 'Netcat Docker smoke test\n' | nc -N -w 5 localhost 9999)
+          test "$(curl --fail "$raw_url")" = 'Netcat Docker smoke test'
+          tcp_slug=${raw_url##*/}
+          curl --fail "http://localhost:8080/api/v1/pastes/$tcp_slug" | jq -e '.content == "Netcat Docker smoke test\n"'
+          code=$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST "http://localhost:8080/delete?slug=$slug")
+          test "$code" = '204'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://localhost:8080/raw/$slug")" = '410'
       - if: always()
         run: docker compose down

@@ -69,3 +69,41 @@ if (timer) {
   const interval = setInterval(tick, 1000); tick();
   document.addEventListener('visibilitychange', tick);
 }
+const linesButton = document.querySelector('#toggle-lines');
+if (linesButton) linesButton.addEventListener('click', () => {
+  const pre = document.querySelector('#paste-content');
+  const numbered = pre.classList.toggle('numbered');
+  const text = pre.textContent;
+  pre.replaceChildren();
+  if (numbered) {
+    const lines = text.split('\n');
+    if (lines.length > 10000) {
+      pre.classList.remove('numbered'); pre.textContent = text;
+      linesButton.textContent = 'Limite: 10 000 linhas'; return;
+    }
+    const fragment = document.createDocumentFragment();
+    lines.forEach((line, index) => {
+      const span = document.createElement('span');
+      span.className = 'code-line'; span.dataset.line = String(index + 1);
+      span.textContent = line + (index < lines.length - 1 ? '\n' : '');
+      fragment.appendChild(span);
+    });
+    pre.appendChild(fragment);
+  } else pre.textContent = text;
+  linesButton.setAttribute('aria-pressed', String(numbered));
+});
+const deleteButton = document.querySelector('#delete-paste');
+if (deleteButton) deleteButton.addEventListener('click', async () => {
+  if (!window.confirm('Eliminar definitivamente este texto? Esta ação não pode ser revertida.')) return;
+  deleteButton.disabled = true;
+  const status = document.querySelector('#delete-status');
+  try {
+    const response = await fetch(`/api/v1/pastes/${encodeURIComponent(deleteButton.dataset.slug)}`, { method: 'DELETE' });
+    if (response.status !== 204) {
+      const problem = await response.json(); throw new Error(problem.error || 'Não foi possível eliminar.');
+    }
+    window.location.reload();
+  } catch (problem) {
+    status.textContent = problem.message || 'Falha de ligação.'; status.hidden = false; deleteButton.disabled = false;
+  }
+});

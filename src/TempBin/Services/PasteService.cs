@@ -31,14 +31,17 @@ public sealed class PasteService(IPasteStore store, ISlugGenerator generator)
     public Task<PasteLookup> FindAsync(string slug) => SlugGenerator.IsValid(slug)
         ? store.FindAsync(slug) : Task.FromResult(new PasteLookup(PasteState.Missing));
 
-    public async Task<Paste> CreateAsync(string? content, int length)
+    public Task<DeleteState> DeleteAsync(string slug, string owner) => SlugGenerator.IsValid(slug)
+        ? store.DeleteAsync(slug, owner) : Task.FromResult(DeleteState.Missing);
+
+    public async Task<Paste> CreateAsync(string? content, int length, string owner = "")
     {
         SlugGenerator.ValidateLength(length);
         if (string.IsNullOrWhiteSpace(content)) throw new PasteValidationException("Introduza texto antes de guardar.");
         if (Encoding.UTF8.GetByteCount(content) > MaxBytes) throw new PasteValidationException("O texto ultrapassa 256 KiB em UTF-8.", 413);
         for (var attempt = 0; attempt < 12; attempt++)
         {
-            var paste = await store.TryCreateAsync(generator.Generate(length), content);
+            var paste = await store.TryCreateAsync(generator.Generate(length), content, owner);
             if (paste is not null) return paste;
         }
         throw new PasteValidationException("Não foi possível gerar um link. Tente novamente.", 503);

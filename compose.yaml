@@ -3,10 +3,14 @@ services:
     build: .
     ports:
       - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
+      - "${TCP_BIND:-127.0.0.1}:${TCP_PORT:-9999}:9999"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       TempBin__Redis: redis:6379,abortConnect=false
       TempBin__PublicOrigin: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      Netcat__Enabled: "${NETCAT_ENABLED:-true}"
+      Netcat__PublicPort: ${TCP_PORT:-9999}
+      TempBin__DeletionKey: ${DELETION_KEY:-}
     depends_on:
       redis:
         condition: service_healthy

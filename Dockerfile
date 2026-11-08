@@ -11,5 +11,6 @@ COPY --from=build /app .
 ENV ASPNETCORE_HTTP_PORTS=8080 DOTNET_EnableDiagnostics=0
 USER $APP_UID
 EXPOSE 8080
+EXPOSE 9999
 # The runtime image intentionally has no curl/wget; use a tiny .NET health probe.
 ENTRYPOINT ["dotnet", "TempBin.dll"]

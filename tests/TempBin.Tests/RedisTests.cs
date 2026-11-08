@@ -94,4 +94,45 @@ public class RedisTests
         }
         finally { await db.KeyDeleteAsync([Data(prefix, slug), Seen(prefix, slug)]); }
     }
+    [RedisFact]
+    public async Task DeleteChecksOwnerAndDeadlineAtomicallyAndKeepsTombstone()
+    {
+        var (connection, store, prefix) = await Connect(); using var _ = connection;
+        const string slug = "abcdefgh"; var db = connection.GetDatabase();
+        try
+        {
+            var paste = await store.TryCreateAsync(slug, "remove me", "owner-fingerprint"); Assert.NotNull(paste);
+            Assert.Equal(DeleteState.Forbidden, await store.DeleteAsync(slug, "wrong-owner"));
+            Assert.Equal(DeleteState.Forbidden, await store.DeleteAsync(slug, ""));
+            Assert.Equal(PasteState.Found, (await store.FindAsync(slug)).State);
+            // Move the creation timestamp to the exact ten-minute boundary without waiting.
+            await db.HashSetAsync(Data(prefix, slug), "created", paste!.CreatedAt.AddMinutes(-10).ToUnixTimeMilliseconds());
+            Assert.Equal(DeleteState.TooLate, await store.DeleteAsync(slug, "owner-fingerprint"));
+            await db.HashSetAsync(Data(prefix, slug), "created", paste.CreatedAt.ToUnixTimeMilliseconds());
+            var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => store.DeleteAsync(slug, "owner-fingerprint")));
+            Assert.Single(results, state => state == DeleteState.Deleted);
+            Assert.Equal(7, results.Count(state => state == DeleteState.Gone));
+            Assert.False(await db.KeyExistsAsync(Data(prefix, slug)));
+            Assert.True(await db.KeyExistsAsync(Seen(prefix, slug)));
+            Assert.Equal(PasteState.Expired, (await store.FindAsync(slug)).State);
+            Assert.Null(await store.TryCreateAsync(slug, "no immediate reuse"));
+        }
+        finally { await db.KeyDeleteAsync([Data(prefix, slug), Seen(prefix, slug)]); }
+    }
+    [RedisFact]
+    public async Task DeleteRespectsExpiryAndLegacyPastesHaveNoOwner()
+    {
+        var (connection, store, prefix) = await Connect(); using var _ = connection;
+        const string slug = "abcdefgh"; var db = connection.GetDatabase();
+        try
+        {
+            Assert.Equal(DeleteState.Missing, await store.DeleteAsync(slug, "owner"));
+            await store.TryCreateAsync(slug, "old paste");
+            Assert.Equal(DeleteState.Forbidden, await store.DeleteAsync(slug, "owner"));
+            await db.HashSetAsync(Data(prefix, slug), "expires", 1);
+            Assert.Equal(DeleteState.Gone, await store.DeleteAsync(slug, "owner"));
+            Assert.False(await db.KeyExistsAsync(Data(prefix, slug)));
+        }
+        finally { await db.KeyDeleteAsync([Data(prefix, slug), Seen(prefix, slug)]); }
+    }
 }
