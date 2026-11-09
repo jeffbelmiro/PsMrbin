@@ -74,9 +74,9 @@ This example requires jq. Replace the sample API endpoint and add its required a
 
 **Anyone with a link can read its text.** Keep passwords, credentials and personal information out of pastes. Random links make discovery harder; they do not provide authentication or end-to-end encryption.
 
-New slugs contain **12â€“16 readable characters**, generated cryptographically. Timebin chooses the length from recent publishing activity and creation volume, using counters shared through Redis. Collision checks are atomic, existing content is never replaced, and reserved slugs are not immediately reused. Older 8â€“16 character links remain readable until they expire.
+New slugs contain **12 to 16 readable characters**, generated cryptographically. Timebin chooses the length from recent publishing activity and creation volume, using counters shared through Redis. Collision checks are atomic, existing content is never replaced, and reserved slugs are not immediately reused. Older 8 to 16 character links remain readable until they expire.
 
-Content expires after **1,800 seconds**. A marker without paste content remains for up to 24 hours from creation to identify expired/deleted links and delay reuse. Downloads, screenshots and copies made by recipients remain outside Timebin's control. Expired text cannot be recovered through the service.
+Content expires after **30 minutes by default**, or **8, 12 or 24 hours** when selected at creation. A marker without paste content remains until the later of 24 hours from creation or one hour after the selected expiry, to identify expired/deleted links and delay reuse. Downloads, screenshots and copies made by recipients remain outside Timebin's control. Expired text cannot be recovered through the service.
 
 ## Explore the project
 
