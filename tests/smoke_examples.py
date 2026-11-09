@@ -47,6 +47,8 @@ class Capture(BaseHTTPRequestHandler):
 
 
 base = os.environ.get("TIMEBIN_BASE_URL", "http://localhost:8080")
+with urllib.request.urlopen(base + "/health/live", timeout=10) as response:
+    assert response.headers.get("Server") is None, "Server implementation header must be disabled"
 
 
 def commands_for(content):

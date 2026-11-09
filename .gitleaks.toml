@@ -1,0 +1,3 @@
+title = "Timebin secret scanning"
+[extend]
+useDefault = true

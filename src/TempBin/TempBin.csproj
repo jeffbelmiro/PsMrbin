@@ -7,4 +7,7 @@
   <ItemGroup><AssemblyMetadata Include="BuildDateUtc" Value="$(BuildDateUtc)" /></ItemGroup>
   <ItemGroup><PackageReference Include="StackExchange.Redis" Version="2.8.31" /><PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="Localization/messages.json" /></ItemGroup>
+  <ItemGroup>
+    <Content Remove="appsettings.*.json;**/.env;**/.env.*;**/secrets.json;**/credentials.json;**/*.private.json;**/*.pem;**/*.key;**/*.pfx;**/*.p12;**/*.jks;**/*.keystore;**/.secrets/**;**/secrets/**;**/.private/**" />
+  </ItemGroup>
 </Project>

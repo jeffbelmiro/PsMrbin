@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+if [ "${1:-}" = '--staged' ]; then
+  paths=$(git -c core.quotePath=true diff --cached --name-only --diff-filter=ACMR)
+else
+  paths=$(git -c core.quotePath=true ls-files)
+fi
+if [ -z "$paths" ]; then exit 0; fi
+# Git quotes unusual names; check-ignore decodes the same format on stdin.
+if printf '%s\n' "$paths" | git -c core.quotePath=true check-ignore --no-index --stdin >/dev/null; then
+  echo 'Blocked: a local-only or sensitive path is included in the public tree.' >&2
+  exit 1
+else
+  status=$?
+  if [ "$status" -ne 1 ]; then exit "$status"; fi
+fi

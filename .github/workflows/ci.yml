@@ -5,16 +5,39 @@ on:
 permissions:
   contents: read
 jobs:
-  verify:
+  secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reject local-only paths in the public tree
+        run: bash .githooks/check-public-tree
+      - name: Install verified Gitleaks release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan fetched history with redacted output
+        run: '"$RUNNER_TEMP/gitleaks" git --log-opts="--all" --config .gitleaks.toml --ignore-gitleaks-allow --redact=100 --no-banner .'
+  verify:
+    needs: secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       redis:
         image: redis:7.4-alpine
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 8.0.x
       - run: dotnet restore
@@ -22,6 +45,16 @@ jobs:
       - run: dotnet test -c Release --no-build --logger trx
         env:
           TEMPBIN_TEST_REDIS: localhost:6379
+      - name: Create isolated runtime secret files
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret_dir="$RUNNER_TEMP/timebin-ci-secrets"
+          mkdir -m 700 "$secret_dir"
+          openssl rand -base64 32 > "$secret_dir/deletion-key"
+          printf '%s' 'redis:6379,abortConnect=false' > "$secret_dir/redis-connection"
+          printf 'TIMEBIN_SECRETS_DIR=%s\n' "$secret_dir" >> "$GITHUB_ENV"
+          printf '%s\n' 'COMPOSE_FILE=compose.yaml:compose.secrets.example.yaml' >> "$GITHUB_ENV"
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait
       - name: Smoke test Docker stack
@@ -42,6 +75,9 @@ jobs:
           test "$(curl --fail "$raw_url")" = 'Netcat Docker smoke test'
           tcp_slug=${raw_url##*/}
           curl --fail "http://localhost:8080/api/v1/pastes/$tcp_slug" | jq -e '.content == "Netcat Docker smoke test\n"'
+          # The same file-mounted HMAC key must survive a web process restart.
+          docker compose restart web
+          docker compose up -d --wait
           code=$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST "http://localhost:8080/delete?slug=$slug")
           test "$code" = '204'
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://localhost:8080/raw/$slug")" = '410'

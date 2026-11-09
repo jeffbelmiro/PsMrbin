@@ -82,10 +82,9 @@ Content expires after **1,800 seconds**. A marker without paste content remains 
 
 | Resource | What you will find |
 | --- | --- |
-| [Operator guide](docs/operations.md) | Setup, environment variables, endpoints, limits, Redis and proxy configuration |
-| [Slug policy](docs/slug-policy.md) | Activity estimates, length thresholds, occupancy budget and limitations |
-| [Design direction](DESIGN.md) | Interface and copy decisions informed by the anti-slop reference |
-| [Interface review](docs/interface-review.md) | Recorded localization, accessibility and browser checks |
+| [Security](SECURITY.md) | Private vulnerability reporting, credentials, secret checks and safe AI-assisted development |
+| [Deployment configuration](compose.yaml) | HTTP/TCP ports, memory limits, health checks and Redis isolation |
+| [Secret-file overlay](compose.secrets.example.yaml) | Optional read-only runtime secrets from outside the checkout |
 | `/openapi` on your instance | Machine-readable API specification |
 | `/disclaimer` on your instance | Content responsibility, acceptable use and service limitations |
 
@@ -100,5 +99,25 @@ dotnet test -c Release --no-build
 ```
 
 Set `TEMPBIN_TEST_REDIS` to a Redis connection string to include storage integration tests. The CI workflow supplies Redis automatically.
+
+## Fork and configure
+
+The public tree includes application source, tests, build/deployment configuration, CI and essential usage/security information. Internal planning, design, AI sessions and audit documents are local-only. Ignoring a file does not remove it from past Git commits or keep it out of an AI tool's accessible context.
+
+| Setting | Default / purpose |
+| --- | --- |
+| `PUBLIC_ORIGIN` | `http://localhost:8080`; set your public HTTPS origin for shared links |
+| `HTTP_BIND`, `HTTP_PORT` | `127.0.0.1`, `8080`; HTTP listener publication |
+| `TCP_BIND`, `TCP_PORT` | `127.0.0.1`, `9999`; netcat listener publication |
+| `NETCAT_ENABLED` | `true` in Compose; disable if you only need HTTP |
+| `TempBin__Redis` | Redis connection string; provided internally by the base Compose stack |
+| `DELETION_KEY` | Optional Base64 key of at least 32 random bytes; use an external secret store or the secret-file overlay for deployments |
+| `TempBin__KnownProxies__0` | Trusted proxy IP; add `__1`, etc. if needed. Untrusted forwarding headers are ignored |
+
+Keep secrets outside the checkout. Files mounted under `/run/secrets` with names such as `TempBin__DeletionKey` and `TempBin__Redis` override default settings. See [SECURITY.md](SECURITY.md) before configuring production credentials.
+
+After installing Gitleaks from its official releases, enable the local commit guard with `git config --local core.hooksPath .githooks`. CI also checks the public tree and scans history with redacted output. Source, tests and runtime localization resources are retained so a fork can build and run without internal documents.
+
+The app uses an English first-visit default and supports `?lang=en`, `es`, `pt-BR`, `fr` or `zh-CN`. API errors also accept `Accept-Language`. Text and API property names are never translated. New link lengths start at 12 and increase at 100, 1,000, 10,000 and 100,000 recent publishing identities, with a second sizing budget based on recent creation volume; older valid links continue to work.
 
 Have a bug or an improvement in mind? [Open a project issue](https://github.com/jeffbelmiro/PsMrbin/issues). Include the behavior you expected and steps to reproduce it. Do not include sensitive paste content.

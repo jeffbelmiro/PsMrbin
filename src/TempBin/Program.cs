@@ -22,8 +22,9 @@ if (args.Contains("--healthcheck"))
 }
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddKeyPerFile(Path.GetFullPath("/run/secrets"), optional: true);
 builder.Services.Configure<RequestLocalizationOptions>(Text.Configure);
-builder.WebHost.ConfigureKestrel(o => { o.Limits.MaxRequestBodySize = 1600000; o.Limits.MaxConcurrentConnections = 256; });
+builder.WebHost.ConfigureKestrel(o => { o.AddServerHeader = false; o.Limits.MaxRequestBodySize = 1600000; o.Limits.MaxConcurrentConnections = 256; });
 builder.Services.AddOptions<TempBinOptions>().BindConfiguration("TempBin")
     .Validate(o => TempBinOptions.ValidOrigin(o.PublicOrigin), "PublicOrigin deve ser uma origem HTTP(S), sem caminho.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.KeyPrefix), "KeyPrefix é obrigatório.")
@@ -77,17 +78,12 @@ app.Use(async (context, next) =>
         context.Response.Cookies.Append(CookieRequestCultureProvider.DefaultCookieName,
             CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(language)),
             new CookieOptions { HttpOnly = true, Secure = context.Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromDays(365), Path = "/" });
-    context.Response.Headers.CacheControl = "no-store";
-    context.Response.Headers.XContentTypeOptions = "nosniff";
-    context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
-    context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    context.Response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+    SecurityHeaders(context.Response);
     try { await next(); }
     catch (Exception ex) when (!context.Response.HasStarted)
     {
         context.Response.Clear();
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers.XContentTypeOptions = "nosniff";
+        SecurityHeaders(context.Response);
         context.Response.Headers.ContentLanguage = Text.Locale;
         context.Response.StatusCode = ex switch
         {
@@ -115,4 +111,12 @@ app.UseSwagger();
 app.MapGet("/openapi", () => Results.Redirect("/swagger/v1/swagger.json"));
 app.MapTempBin();
 app.Run();
+static void SecurityHeaders(HttpResponse response)
+{
+    response.Headers.CacheControl = "no-store";
+    response.Headers.XContentTypeOptions = "nosniff";
+    response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
+    response.Headers["Referrer-Policy"] = "no-referrer";
+    response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+}
 public partial class Program { }
