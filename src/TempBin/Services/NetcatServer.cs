@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TempBin.Models;
 using TempBin.Storage;
+using TempBin.Localization;
 
 namespace TempBin.Services;
 
@@ -72,7 +73,7 @@ public sealed class NetcatServer(IServiceProvider services, IOptions<NetcatOptio
                 using var personal = perIp.AttemptAcquire(ip);
                 if (!capacity.IsAcquired || !volume.IsAcquired || !personal.IsAcquired)
                 {
-                    await ReplyAsync(stream, "ERROR 429: demasiados pedidos; tente dentro de um minuto.", total.Token);
+                    await ReplyAsync(stream, "ERROR 429: too many requests; try again in a minute.", total.Token);
                     return;
                 }
                 using var content = new MemoryStream();
@@ -86,7 +87,7 @@ public sealed class NetcatServer(IServiceProvider services, IOptions<NetcatOptio
                     catch (OperationCanceledException) when (!total.IsCancellationRequested && content.Length > 0) { break; }
                     if (count == 0) break; // nc -N, nc -q or shutdown(SHUT_WR)
                     if (content.Length + count > PasteService.MaxBytes)
-                        throw new PasteValidationException("O texto ultrapassa 256 KiB em UTF-8.", 413);
+                        throw new PasteValidationException("error.size", 413);
                     content.Write(bytes, 0, count);
                 }
                 total.Token.ThrowIfCancellationRequested();
@@ -94,16 +95,16 @@ public sealed class NetcatServer(IServiceProvider services, IOptions<NetcatOptio
                 var paste = await services.GetRequiredService<PasteService>().CreateAsync(text, 8, identity.Fingerprint(ip));
                 await ReplyAsync(stream, $"{options.Value.PublicOrigin.TrimEnd('/')}/raw/{paste.Slug}", total.Token);
             }
-            catch (PasteValidationException ex) { await SafeErrorAsync(stream, $"ERROR {ex.Status}: {ex.Message}", total.Token); }
-            catch (DecoderFallbackException) { await SafeErrorAsync(stream, "ERROR 400: envie apenas texto UTF-8 válido.", total.Token); }
-            catch (OperationCanceledException) { await SafeErrorAsync(stream, "ERROR 408: tempo de envio excedido.", stop); }
-            catch (RedisException) { await SafeErrorAsync(stream, "ERROR 503: armazenamento temporariamente indisponível.", total.Token); }
+            catch (PasteValidationException ex) { await SafeErrorAsync(stream, $"ERROR {ex.Status}: {Text.Get(ex.Message, "en")}", total.Token); }
+            catch (DecoderFallbackException) { await SafeErrorAsync(stream, "ERROR 400: send valid UTF-8 text only.", total.Token); }
+            catch (OperationCanceledException) { await SafeErrorAsync(stream, "ERROR 408: upload timed out.", stop); }
+            catch (RedisException) { await SafeErrorAsync(stream, "ERROR 503: storage is temporarily unavailable.", total.Token); }
             catch (IOException) { }
             catch (SocketException) { }
             catch (Exception ex)
             {
                 logger.LogWarning("Falha no pedido TCP ({ExceptionType}).", ex.GetType().Name);
-                await SafeErrorAsync(stream, "ERROR 500: não foi possível processar o pedido.", total.Token);
+                await SafeErrorAsync(stream, "ERROR 500: the request could not be processed.", total.Token);
             }
         }
     }

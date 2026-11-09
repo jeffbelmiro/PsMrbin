@@ -9,6 +9,8 @@ using TempBin.Endpoints;
 using TempBin.Models;
 using TempBin.Services;
 using TempBin.Storage;
+using TempBin.Localization;
+using Microsoft.AspNetCore.Localization;
 
 if (args.Contains("--healthcheck"))
 {
@@ -20,6 +22,7 @@ if (args.Contains("--healthcheck"))
 }
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.Configure<RequestLocalizationOptions>(Text.Configure);
 builder.WebHost.ConfigureKestrel(o => { o.Limits.MaxRequestBodySize = 1600000; o.Limits.MaxConcurrentConnections = 256; });
 builder.Services.AddOptions<TempBinOptions>().BindConfiguration("TempBin")
     .Validate(o => TempBinOptions.ValidOrigin(o.PublicOrigin), "PublicOrigin deve ser uma origem HTTP(S), sem caminho.")
@@ -46,7 +49,7 @@ builder.Services.AddRateLimiter(o =>
     o.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = "60";
-        await context.HttpContext.Response.WriteAsJsonAsync(new { error = "Demasiados pedidos. Aguarde um minuto." }, token);
+        await context.HttpContext.Response.WriteAsJsonAsync(new { error = Text.Get("error.rate") }, token);
     };
     // A global cap limits distributed traffic and concurrent bodies; per-IP caps limit enumeration.
     o.GlobalLimiter = PartitionedRateLimiter.CreateChained(
@@ -66,8 +69,14 @@ if (knownProxies.Length > 0)
     foreach (var ip in knownProxies) forwarded.KnownProxies.Add(System.Net.IPAddress.Parse(ip));
     app.UseForwardedHeaders(forwarded);
 }
+app.UseRequestLocalization();
 app.Use(async (context, next) =>
 {
+    if (HttpMethods.IsGet(context.Request.Method) && context.Request.Query["lang"].Count == 1
+        && Text.Resolve(context.Request.Query["lang"][0]) is { } language)
+        context.Response.Cookies.Append(CookieRequestCultureProvider.DefaultCookieName,
+            CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(language)),
+            new CookieOptions { HttpOnly = true, Secure = context.Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromDays(365), Path = "/" });
     context.Response.Headers.CacheControl = "no-store";
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
@@ -79,6 +88,7 @@ app.Use(async (context, next) =>
         context.Response.Clear();
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers.ContentLanguage = Text.Locale;
         context.Response.StatusCode = ex switch
         {
             PasteValidationException validation => validation.Status,
@@ -88,14 +98,14 @@ app.Use(async (context, next) =>
             _ => 500
         };
         // Never log bodies, Redis exception payloads, or user content.
-        var message = ex is PasteValidationException v ? v.Message : context.Response.StatusCode switch
+        var key = ex is PasteValidationException v ? v.Message : context.Response.StatusCode switch
         {
-            400 => "Pedido inválido. Verifique o JSON e a codificação UTF-8.",
-            413 => "O pedido ultrapassa o tamanho permitido.",
-            503 => "Armazenamento temporariamente indisponível. Tente novamente.",
-            _ => "Não foi possível processar o pedido."
+            400 => "error.invalid",
+            413 => "error.bodySize",
+            503 => "error.storage",
+            _ => "error.internal"
         };
-        await context.Response.WriteAsJsonAsync(new { error = message });
+        await context.Response.WriteAsJsonAsync(new { error = Text.Get(key) });
     }
 });
 app.UseStaticFiles();

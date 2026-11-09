@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using TempBin.Localization;
 using TempBin.Models;
 using TempBin.Services;
 
@@ -8,48 +9,51 @@ namespace TempBin.Web;
 public static class Html
 {
     private static string E(string value) => WebUtility.HtmlEncode(value);
-    private static string Shell(string body, string title = "Texto passageiro. Partilha simples.") => $$"""
-        <!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-        <meta name="robots" content="noindex,nofollow"><meta name="description" content="Partilhe texto durante 30 minutos. Sem conta. Pelo navegador, curl ou API.">
-        <title>Timebin · {{E(title)}}</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
-        <body><div class="ambient"></div><header class="topbar"><a class="brand" href="/" aria-label="Timebin início"><span class="logo">t<span>↗</span></span>Timebin<span class="beta">EPHEMERAL TEXT</span></a><span class="status"><i></i> Sem conta. Sem permanência.</span></header>
-        <main>{{body}}</main><footer><a class="brand-small" href="/">Timebin</a><span>Feito para partilhar. Concebido para desaparecer.</span><a href="/openapi">OpenAPI ↗</a></footer></body></html>
+    private static string T(string key) => E(Text.Get(key));
+    private static string Shell(string body, string? title = null) => $$"""
+        <!doctype html><html lang="{{Text.Locale}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta name="robots" content="noindex,nofollow"><meta name="description" content="{{T("description")}}">
+        <title>Timebin · {{E(title ?? Text.Get("pageTitle"))}}</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+        <body><a class="skip-link" href="#main">{{T("skip")}}</a><div id="i18n" data-messages="{{E(Text.ClientMessages)}}" hidden></div>
+        <header class="topbar"><a class="brand" href="/" aria-label="{{T("home")}}"><span class="logo" aria-hidden="true">t<span>↗</span></span>Timebin</a>
+        <form id="language-form" class="language-form" method="get"><label for="language">{{T("language")}}</label><select id="language" name="lang">{{LanguageOptions()}}</select><button class="copy" type="submit">{{T("applyLanguage")}}</button></form></header>
+        <main id="main">{{body}}</main><footer><span>{{T("footer")}}</span><a href="/openapi">{{T("apiDocs")}}</a></footer>
+        <dialog id="confirm-dialog" aria-labelledby="confirm-message"><form method="dialog"><p id="confirm-message"></p><div class="dialog-actions"><button class="copy" value="cancel" autofocus>{{T("js.cancel")}}</button><button class="primary" id="confirm-action" value="confirm">{{T("js.continue")}}</button></div></form></dialog></body></html>
         """;
 
+    private static string LanguageOptions() => string.Join("", Text.Cultures.Select((culture, index) =>
+        $"<option value=\"{culture}\"{(culture == Text.Locale ? " selected" : "")}>{E(Text.LanguageNames[index])}</option>"));
+
     public static string Home(string origin, NetcatOptions? netcat = null) => Shell($$"""
-        <section class="intro"><div><p class="eyebrow"><span class="tiny-line"></span> UMA IDEIA, UM LINK, 30 MINUTOS</p>
-        <h1>O seu texto.<br><span>De passagem.</span></h1><p class="lead">Cole. Guarde. Partilhe. Um espaço temporário para texto simples,<br class="desktop"> sem registo e sem complicações.</p></div>
-        <div class="time-card"><span class="clock">◷</span><strong>30<span>min</span></strong><p>É tudo o que fica.<br>Depois, desaparece.</p></div></section>
-        <div class="workspace"><section class="editor card"><form id="paste-form"><div class="panel-heading"><h2><span class="dot"></span> Novo texto</h2><span class="muted">01 / ESCREVER</span></div>
-        <label class="sr-only" for="content">Texto a partilhar</label><textarea id="content" name="content" placeholder="Cole o seu texto aqui…&#10;&#10;Uma nota, um snippet, uma resposta da API.&#10;O que precisa de partilhar, por pouco tempo." autofocus spellcheck="false" required aria-describedby="editor-help byte-count"></textarea>
-        <div class="editor-meta"><span id="editor-help">Texto simples · UTF-8</span><span id="byte-count" aria-live="polite">0 / 262 144 bytes</span></div>
-        <div class="editor-controls"><div><label for="slug-length">Comprimento do link</label><div class="select-wrap"><select id="slug-length" name="slug_length">{{string.Join("", Enumerable.Range(8, 9).Select(n => $"<option value=\"{n}\">{n} caracteres{(n == 8 ? " · padrão" : "")}</option>"))}}</select><span>8–16, letras e números</span></div></div><button id="save" class="primary" type="submit">Guardar e gerar link <span>↗</span></button></div>
+        <section class="intro"><h1>{{T("headline")}}</h1><p class="lead">{{T("intro")}}</p></section>
+        <div class="workspace"><section class="editor card"><form id="paste-form">
+        <div class="panel-heading"><label for="content">{{T("editor")}}</label><span class="muted">{{T("plainUtf8")}}</span></div>
+        <textarea id="content" name="content" placeholder="{{T("placeholder")}}" spellcheck="false" required aria-describedby="editor-help byte-count"></textarea>
+        <div class="editor-meta"><span id="editor-help">{{T("slugHint")}}</span><span id="byte-count" aria-live="polite">0 / {{PasteService.MaxBytes.ToString("N0", CultureInfo.CurrentCulture)}} {{T("js.bytes")}}</span></div>
+        <div class="editor-controls"><div class="length-control"><label for="slug-length">{{T("slugLength")}}</label><select id="slug-length" name="slug_length">{{string.Join("", Enumerable.Range(8, 9).Select(n => $"<option value=\"{n}\">{E(Text.Format("characters", n))}{(n == 8 ? " · " + T("default") : "")}</option>"))}}</select></div>
+        <button id="save" class="primary" type="submit">{{T("save")}}</button></div>
         <p id="form-error" class="error" role="alert" hidden></p></form></section>
-        <aside class="side"><section class="card rules"><p class="eyebrow">SIMPLES POR DEFINIÇÃO</p><h2>Partilhe o momento.<br>Não o histórico.</h2>
-        <div class="rule"><span>01</span><div><h3>Expira em 30 minutos</h3><p>O prazo começa ao guardar. Ler não prolonga a validade. O mesmo IP pode eliminar nos primeiros 10 minutos. Sem edição nem recuperação.</p></div></div>
-        <div class="rule"><span>02</span><div><h3>Um link, vários caminhos</h3><p>Aceda pela página, texto puro, JSON ou download .txt. Funciona com curl e API REST.</p></div></div>
-        <div class="rule"><span>03</span><div><h3>Até 256 KiB por texto</h3><p>262 144 bytes em UTF-8. Sem login, email ou cookies de autenticação.</p></div></div>
-        <div class="notice"><span>!</span><p><strong>Um link não é um segredo.</strong> Quem o tiver pode ler. Não publique palavras-passe, tokens ou informação sensível.</p></div></section></aside></div>
-        <section class="terminal card"><div class="terminal-title"><div><span class="terminal-icon">&gt;_</span><h2>Também fala terminal.</h2></div><span class="muted">SEM SAIR DO SEU FLUXO</span></div>
-        <p>Envie texto ou um ficheiro. A API devolve todos os links e a hora exata de expiração.</p>
-        <div class="command-row"><code id="curl-example">curl -X POST '{{E(origin)}}/api/v1/pastes' -H 'Content-Type: text/plain; charset=utf-8' --data-binary 'Olá, mundo!'</code><button type="button" data-copy="curl-example" class="copy">Copiar</button></div>
-        <div class="terminal-notes"><span><b>Ficheiro</b> Substitua o texto por <code>--data-binary @exemplo.txt</code></span><span><b>JSON</b> <code>{"content":"Olá!","slug_length":8}</code> com <code>Content-Type: application/json</code></span></div></section>
-        {{NetcatGuide(origin, netcat)}}
+        <aside class="rules"><h2>{{T("rulesTitle")}}</h2><dl><dt>{{T("expiryTitle")}}</dt><dd>{{T("expiryRule")}}</dd><dt>{{T("sizeTitle")}}</dt><dd>{{T("sizeRule")}}</dd><dt>{{T("deleteRuleTitle")}}</dt><dd>{{T("deleteRule")}}</dd></dl>
+        <div class="notice"><strong>{{T("publicTitle")}}</strong><p>{{T("publicWarning")}}</p></div></aside></div>
+        <section class="terminal" aria-labelledby="terminal-title"><h2 id="terminal-title">{{T("terminalTitle")}}</h2><p>{{T("curlDescription")}}</p>
+        <div class="command-row"><code id="curl-example">curl -X POST '{{E(origin)}}/api/v1/pastes' -H 'Content-Type: text/plain; charset=utf-8' --data-binary 'Hello, world!'</code><button type="button" data-copy="curl-example" class="copy">{{T("copy")}}</button></div>
+        <p>{{T("fileHelp")}} <code>--data-binary @example.txt</code>.</p>
+        <p>{{T("jsonHelp")}} <code>Content-Type: application/json</code>: <code>{"content":"Hello!","slug_length":8}</code></p>
+        {{NetcatGuide(origin, netcat)}}</section>
         """);
 
     private static string NetcatGuide(string origin, NetcatOptions? netcat)
     {
         if (netcat?.Enabled != true) return "";
-        var host = netcat.PublicHost ?? new Uri(origin).Host;
+        var host = netcat.PublicHost ?? new Uri(origin).Host.Trim('[', ']');
         var target = $"{host} {netcat.PublicPort}";
         return $$"""
-            <section class="terminal card"><div class="terminal-title"><div><span class="terminal-icon">|</span><h2>Do terminal para um link.</h2></div><span class="muted">NETCAT · TCP {{netcat.PublicPort}}</span></div>
-            <p>Envie texto, ficheiros ou a saída de um comando. Receba um link de texto puro, pronto para curl.</p>
-            <div class="command-row"><code id="nc-example">echo 'Olá, mundo!' | nc {{E(target)}}</code><button class="copy" data-copy="nc-example">Copiar</button></div>
-            <div class="terminal-notes"><span><b>Ficheiro</b> <code>cat exemplo.txt | nc {{E(target)}}</code></span><span><b>Comando</b> <code>ls -la | nc {{E(target)}}</code></span></div>
-            <div class="command-row"><code id="nc-alias">alias tb='nc {{E(target)}}'</code><button class="copy" data-copy="nc-alias">Copiar alias</button></div>
-            <p>Adicione o alias ao .bashrc ou .zshrc e use <code>ls -la | tb</code>. Sem nc? Use <code>comando | curl -H 'Content-Type: text/plain' --data-binary @- '{{E(origin)}}/api/v1/pastes'</code>.</p>
-            <p>TCP simples não cifra o envio. Para dados em trânsito por HTTPS, use curl. O envio termina ao fechar a escrita ou após {{netcat.IdleTimeoutMilliseconds / 1000.0}} segundos sem dados; máximo de {{netcat.TotalTimeoutSeconds}} segundos e 256 KiB.</p></section>
+            <div class="netcat-guide"><h3>{{T("netcatTitle")}}</h3><p>{{T("netcatDescription")}}</p>
+            <div class="command-row"><code id="nc-example">echo 'Hello, world!' | nc {{E(target)}}</code><button class="copy" data-copy="nc-example">{{T("copy")}}</button></div>
+            <div class="terminal-notes"><p><span>{{T("file")}}</span><code>cat example.txt | nc {{E(target)}}</code></p><p><span>{{T("command")}}</span><code>ls -la | nc {{E(target)}}</code></p></div>
+            <p>{{T("alias")}}</p><div class="command-row"><code id="nc-alias">alias tb='nc {{E(target)}}'</code><button class="copy" data-copy="nc-alias">{{T("copy")}}</button></div>
+            <p>{{T("aliasHelp")}} <code>ls -la | tb</code>.</p>
+            <p class="technical-note">{{T("tcpWarning")}} {{E(Text.Format("tcpLimits", netcat.IdleTimeoutMilliseconds / 1000.0, netcat.TotalTimeoutSeconds))}}</p></div>
             """;
     }
 
@@ -61,19 +65,21 @@ public static class Html
         var download = $"{origin}/download/{paste.Slug}";
         var expiry = paste.ExpiresAt.ToString("O", CultureInfo.InvariantCulture);
         return Shell($$"""
-            <section class="result-intro"><p class="eyebrow">PRONTO PARA PARTILHAR</p><h1>Um texto.<br><span>Vários caminhos.</span></h1><p class="lead">O link está pronto. A contagem já começou.</p></section>
-            <section class="card result-card"><div class="panel-heading"><h2><span class="dot"></span> O seu link</h2><span id="countdown" data-expires="{{E(expiry)}}" role="timer">A calcular…</span></div>
-            <div class="share-main"><a id="main-url" href="{{E(url)}}">{{E(url)}}</a><button class="primary" data-copy="main-url">Copiar link ↗</button></div>
-            <div class="link-grid">{{Link("Texto puro", "raw-url", raw)}}{{Link("API JSON", "api-url", api)}}{{Link("Download .txt", "download-url", download)}}</div>
-            <div class="command-row"><code id="read-curl">curl '{{E(raw)}}'</code><button class="copy" data-copy="read-curl">Copiar curl</button></div>
-            <p class="expiry">Expira em <time id="expires-at" datetime="{{E(expiry)}}">{{E(expiry)}}</time> · {{paste.SizeBytes.ToString("N0", CultureInfo.GetCultureInfo("pt-PT"))}} bytes · Sem renovação</p></section>
-            <section class="card preview-card" id="preview"><div class="panel-heading"><h2>Pré-visualização</h2><button class="copy" id="toggle-lines" aria-pressed="false">Números de linha</button><a href="{{E(download)}}">Descarregar .txt ↓</a></div><pre id="paste-content">{{E(paste.Content)}}</pre></section>
-            <section class="terminal card"><h2>Partilhou por engano?</h2><p>O IP que criou o texto pode eliminá-lo nos primeiros 10 minutos. A eliminação é imediata e não pode ser revertida.</p>
-            <button class="copy" id="delete-paste" data-slug="{{E(paste.Slug)}}">Eliminar este texto</button><p id="delete-status" role="status" hidden></p>
-            <div class="command-row"><code id="delete-curl">curl -X POST '{{E(origin)}}/delete?slug={{E(paste.Slug)}}'</code><button class="copy" data-copy="delete-curl">Copiar curl</button></div></section>
-            <div class="result-bottom"><p>Quem tem o link pode ler. Após a expiração, o texto não pode ser recuperado.</p><a class="primary" href="/">Criar outro texto +</a></div>
-            """, "Texto guardado");
+            <section class="intro"><h1>{{T("ready")}}</h1><p class="lead">{{T("readyHint")}}</p></section>
+            <section class="card result-card"><div class="panel-heading"><h2>{{T("shareLink")}}</h2><span id="countdown" data-expires="{{E(expiry)}}" role="timer">{{T("js.calculating")}}</span></div>
+            <div class="share-main"><a id="main-url" href="{{E(url)}}">{{E(url)}}</a><button class="primary" data-copy="main-url">{{T("copyLink")}}</button></div>
+            <div class="link-grid">{{Link("raw", "raw-url", raw)}}{{Link("json", "api-url", api)}}{{Link("download", "download-url", download)}}</div>
+            <div class="command-row"><code id="read-curl">curl '{{E(raw)}}'</code><button class="copy" data-copy="read-curl">{{T("copyCurl")}}</button></div>
+            <p class="expiry">{{T("expiresAt")}} <time id="expires-at" datetime="{{E(expiry)}}">{{E(paste.ExpiresAt.ToString("f", CultureInfo.CurrentCulture))}} UTC</time> · {{paste.SizeBytes.ToString("N0", CultureInfo.CurrentCulture)}} {{T("js.bytes")}}<br>{{T("noRenewal")}}</p></section>
+            <section class="card preview-card" id="preview"><div class="panel-heading"><h2>{{T("preview")}}</h2><div class="preview-actions"><button class="copy" id="toggle-lines" aria-pressed="false">{{T("lineNumbers")}}</button><a href="{{E(download)}}">{{T("download")}}</a></div></div><pre id="paste-content">{{E(paste.Content)}}</pre></section>
+            <section class="delete-section"><h2>{{T("removeTitle")}}</h2><p>{{T("removeHint")}}</p>
+            <button class="copy danger" id="delete-paste" data-slug="{{E(paste.Slug)}}">{{T("delete")}}</button><p id="delete-status" role="status" hidden></p>
+            <div class="command-row"><code id="delete-curl">curl -X POST '{{E(origin)}}/delete?slug={{E(paste.Slug)}}'</code><button class="copy" data-copy="delete-curl">{{T("copyCurl")}}</button></div></section>
+            <div class="result-bottom"><a class="primary" href="/">{{T("newPaste")}}</a></div>
+            """, Text.Get("ready"));
     }
-    private static string Link(string title, string id, string url) => $"<div class=\"link-item\"><span>{E(title)}</span><a id=\"{id}\" href=\"{E(url)}\">{E(url)}</a><button class=\"copy\" data-copy=\"{id}\" aria-label=\"Copiar {E(title)}\">Copiar</button></div>";
-    public static string Error(bool expired) => Shell($"<section class=\"result-intro\"><p class=\"eyebrow\">{(expired ? "410 · TEXTO INDISPONÍVEL" : "404 · LINK DESCONHECIDO")}</p><h1>{(expired ? "Este texto<br><span>já passou.</span>" : "Nada por aqui.")}</h1><p class=\"lead\">{(expired ? "O texto expirou ou foi eliminado pelo autor. O conteúdo não pode ser recuperado." : "O link não existe, está incorreto ou o seu marcador de expiração já foi eliminado.")}</p><a class=\"primary\" href=\"/\">Criar um texto ↗</a></section>");
+    private static string Link(string title, string id, string url) => $"<div class=\"link-item\"><h3>{T(title)}</h3><a id=\"{id}\" href=\"{E(url)}\">{E(url)}</a><button class=\"copy\" data-copy=\"{id}\" aria-label=\"{T("copy")} {T(title)}\">{T("copy")}</button></div>";
+    public static string Error(bool expired) => Shell($$"""
+        <section class="intro error-page"><p class="error-code">{{(expired ? "410" : "404")}}</p><h1>{{T(expired ? "goneTitle" : "missingTitle")}}</h1><p class="lead">{{T(expired ? "goneHint" : "missingHint")}}</p><a class="primary" href="/">{{T("newPaste")}}</a></section>
+        """, Text.Get(expired ? "goneTitle" : "missingTitle"));
 }

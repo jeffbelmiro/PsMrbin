@@ -19,7 +19,7 @@ public sealed class SlugGenerator : ISlugGenerator
     }
     public static void ValidateLength(int length)
     {
-        if (length is < 8 or > 16) throw new PasteValidationException("O slug deve ter entre 8 e 16 caracteres.");
+        if (length is < 8 or > 16) throw new PasteValidationException("error.slug");
     }
     public static bool IsValid(string slug) => slug.Length is >= 8 and <= 16 && slug.All(Alphabet.Contains);
 }
@@ -37,13 +37,13 @@ public sealed class PasteService(IPasteStore store, ISlugGenerator generator)
     public async Task<Paste> CreateAsync(string? content, int length, string owner = "")
     {
         SlugGenerator.ValidateLength(length);
-        if (string.IsNullOrWhiteSpace(content)) throw new PasteValidationException("Introduza texto antes de guardar.");
-        if (Encoding.UTF8.GetByteCount(content) > MaxBytes) throw new PasteValidationException("O texto ultrapassa 256 KiB em UTF-8.", 413);
+        if (string.IsNullOrWhiteSpace(content)) throw new PasteValidationException("error.empty");
+        if (Encoding.UTF8.GetByteCount(content) > MaxBytes) throw new PasteValidationException("error.size", 413);
         for (var attempt = 0; attempt < 12; attempt++)
         {
             var paste = await store.TryCreateAsync(generator.Generate(length), content, owner);
             if (paste is not null) return paste;
         }
-        throw new PasteValidationException("Não foi possível gerar um link. Tente novamente.", 503);
+        throw new PasteValidationException("error.retry", 503);
     }
 }

@@ -34,7 +34,7 @@ public class TermbinApiTests
         client.DefaultRequestHeaders.UserAgent.ParseAdd("curl/8.0"); client.DefaultRequestHeaders.Accept.ParseAdd("text/html");
         var response = await client.GetAsync($"/{slug}");
         Assert.Equal("text/html", response.Content.Headers.ContentType!.MediaType);
-        Assert.Contains("Números de linha", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Line numbers", await response.Content.ReadAsStringAsync());
     }
     [Theory][InlineData(true)][InlineData(false)]
     public async Task SameIpCanDeleteViaRestOrTermbinCompatibleEndpoint(bool rest)

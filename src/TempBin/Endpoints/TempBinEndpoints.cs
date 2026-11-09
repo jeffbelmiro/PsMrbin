@@ -5,6 +5,7 @@ using TempBin.Models;
 using TempBin.Services;
 using TempBin.Storage;
 using TempBin.Web;
+using TempBin.Localization;
 
 namespace TempBin.Endpoints;
 
@@ -30,10 +31,10 @@ public static class TempBinEndpoints
             var length = 8;
             var mediaType = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant();
             if (mediaType is not ("application/json" or "text/plain"))
-                return Results.Json(new { error = "Use application/json ou text/plain em UTF-8." }, statusCode: 415);
+                return Results.Json(new { error = Text.Get("error.media") }, statusCode: 415);
             if (request.ContentType!.Contains("charset=", StringComparison.OrdinalIgnoreCase)
                 && !request.ContentType.Replace("\"", "").Replace(" ", "").EndsWith("charset=utf-8", StringComparison.OrdinalIgnoreCase))
-                throw new PasteValidationException("A codificação deve ser UTF-8.");
+                throw new PasteValidationException("error.encoding");
             // Hard byte cap before deserialization, including chunked requests and JSON escaping overhead.
             var cap = mediaType == "text/plain" ? PasteService.MaxBytes : 1600000;
             using var buffer = new MemoryStream();
@@ -41,14 +42,14 @@ public static class TempBinEndpoints
             int read;
             while ((read = await request.Body.ReadAsync(chunk, request.HttpContext.RequestAborted)) > 0)
             {
-                if (buffer.Length + read > cap) throw new PasteValidationException("O pedido ultrapassa o tamanho permitido.", 413);
+                if (buffer.Length + read > cap) throw new PasteValidationException("error.bodySize", 413);
                 buffer.Write(chunk, 0, read);
             }
             var body = new UTF8Encoding(false, true).GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
             if (mediaType == "application/json")
             {
                 var payload = JsonSerializer.Deserialize<CreatePasteRequest>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                if (payload is null) throw new PasteValidationException("O payload JSON é obrigatório.");
+                if (payload is null) throw new PasteValidationException("error.json");
                 content = payload.Content;
                 length = payload.SlugLength;
             }
@@ -57,7 +58,7 @@ public static class TempBinEndpoints
                 content = body;
                 if (request.Query.TryGetValue("slug_length", out var requested))
                 {
-                    if (!int.TryParse(requested, out length)) throw new PasteValidationException("Comprimento de slug inválido.");
+                    if (!int.TryParse(requested, out length)) throw new PasteValidationException("error.slugValue");
                 }
             }
             var paste = await service.CreateAsync(content, length, identity.Fingerprint(request.HttpContext.Connection.RemoteIpAddress));
@@ -112,17 +113,17 @@ public static class TempBinEndpoints
         // Prevent a third-party web page deleting a known paste through the visitor's IP.
         if (request.Headers["Sec-Fetch-Site"] == "cross-site" || (request.Headers.TryGetValue("Origin", out var origin)
             && origin.ToString() != options.Value.PublicOrigin.TrimEnd('/')))
-            return Results.Json(new { error = "Origem do pedido não permitida." }, statusCode: 403);
+            return Results.Json(new { error = Text.Get("error.origin") }, statusCode: 403);
         var result = await service.DeleteAsync(slug, identity.Fingerprint(request.HttpContext.Connection.RemoteIpAddress));
         return result switch
         {
             DeleteState.Deleted => Results.NoContent(),
-            DeleteState.Missing => Results.Json(new { error = "Texto não encontrado." }, statusCode: 404),
-            DeleteState.Gone => Results.Json(new { error = "Este texto já expirou ou foi eliminado." }, statusCode: 410),
-            DeleteState.TooLate => Results.Json(new { error = "A eliminação só é permitida nos primeiros 10 minutos." }, statusCode: 403),
-            _ => Results.Json(new { error = "Só o IP que criou este texto o pode eliminar nos primeiros 10 minutos." }, statusCode: 403)
+            DeleteState.Missing => Results.Json(new { error = Text.Get("error.missing") }, statusCode: 404),
+            DeleteState.Gone => Results.Json(new { error = Text.Get("error.gone") }, statusCode: 410),
+            DeleteState.TooLate => Results.Json(new { error = Text.Get("error.deleteLate") }, statusCode: 403),
+            _ => Results.Json(new { error = Text.Get("error.deleteOwner") }, statusCode: 403)
         };
     }
-    private static IResult Missing(PasteLookup result) => Results.Json(new { error = result.State == PasteState.Expired
-        ? "Este texto expirou ou foi eliminado e não pode ser recuperado." : "Texto não encontrado." }, statusCode: result.State == PasteState.Expired ? 410 : 404);
+    private static IResult Missing(PasteLookup result) => Results.Json(new { error = Text.Get(result.State == PasteState.Expired
+        ? "error.gone" : "error.missing") }, statusCode: result.State == PasteState.Expired ? 410 : 404);
 }

@@ -1,37 +1,67 @@
 'use strict';
+const messages = JSON.parse(document.querySelector('#i18n').dataset.messages);
+const locale = document.documentElement.lang || 'en';
+const t = (key, value) => messages[key].replace('{0}', value ?? '');
+class RequestError extends Error {}
+const numbers = new Intl.NumberFormat(locale);
 const form = document.querySelector('#paste-form');
 const encoder = new TextEncoder();
+const confirmAction = (message, destructive = false) => new Promise(resolve => {
+  const dialog = document.querySelector('#confirm-dialog');
+  if (dialog.open) { resolve(false); return; }
+  dialog.returnValue = 'cancel';
+  document.querySelector('#confirm-message').textContent = message;
+  const action = document.querySelector('#confirm-action');
+  action.textContent = t(destructive ? 'deleteAction' : 'continue');
+  action.classList.toggle('confirm-danger', destructive);
+  dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+  dialog.showModal();
+});
+document.querySelector('#language-form').addEventListener('submit', async event => {
+  const languageForm = event.currentTarget;
+  if (document.querySelector('#language').value === locale) { event.preventDefault(); return; }
+  if (form && document.querySelector('#content').value) {
+    event.preventDefault();
+    if (await confirmAction(t('unsaved'))) languageForm.submit();
+  }
+});
 if (form) {
   const input = document.querySelector('#content');
   const counter = document.querySelector('#byte-count');
   const button = document.querySelector('#save');
+  const saveLabel = button.textContent;
   const error = document.querySelector('#form-error');
+  let saving = false;
   const update = () => {
     const size = encoder.encode(input.value).length;
-    counter.textContent = `${size.toLocaleString('pt-PT')} / 262 144 bytes`;
+    counter.textContent = `${numbers.format(size)} / ${numbers.format(262144)} ${t('bytes')}`;
     counter.classList.toggle('over-limit', size > 262144);
-    button.disabled = size > 262144 || !input.value.trim();
+    button.disabled = saving || size > 262144 || !input.value.trim();
   };
   input.addEventListener('input', update);
   update();
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    if (saving || button.disabled) return;
+    saving = true;
     error.hidden = true;
-    button.disabled = true;
-    button.textContent = 'A guardar…';
+    button.textContent = t('saving');
+    input.readOnly = true;
+    update();
     try {
-      const response = await fetch('/api/v1/pastes', {
+      const response = await fetch(`/api/v1/pastes?lang=${encodeURIComponent(locale)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: input.value, slug_length: Number(document.querySelector('#slug-length').value) })
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Não foi possível guardar. Tente novamente.');
-      // Navigate locally; configured public-origin URLs are displayed by the server.
-      window.location.assign(`/${encodeURIComponent(result.slug)}`);
+      if (!response.ok) throw new RequestError(result.error || t('saveError'));
+      window.location.assign(`/${encodeURIComponent(result.slug)}?lang=${encodeURIComponent(locale)}`);
     } catch (problem) {
-      error.textContent = problem.message || 'Falha de ligação. Tente novamente.';
+      error.textContent = problem instanceof RequestError ? problem.message : t('network');
       error.hidden = false;
-      button.textContent = 'Guardar e gerar link ↗';
+      button.textContent = saveLabel;
+      saving = false;
+      input.readOnly = false;
       update();
     }
   });
@@ -48,21 +78,22 @@ document.querySelectorAll('[data-copy]').forEach(button => button.addEventListen
       const copied = document.execCommand('copy'); field.remove();
       if (!copied) throw new Error('copy');
     }
-    button.textContent = 'Copiado ✓';
-  } catch { button.textContent = 'Selecione e copie'; }
+    button.textContent = t('copied');
+  } catch { button.textContent = t('copyFallback'); }
   setTimeout(() => { button.textContent = previous; }, 2200);
 }));
 const timer = document.querySelector('#countdown');
 if (timer) {
   const deadline = Date.parse(timer.dataset.expires);
-  const time = document.querySelector('#expires-at');
-  time.textContent = new Date(deadline).toLocaleString('pt-PT', { dateStyle: 'medium', timeStyle: 'long' });
+  document.querySelector('#expires-at').textContent = new Date(deadline).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'long' });
   const tick = () => {
     const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    timer.textContent = remaining ? `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')} restantes` : 'Expirado';
+    const clock = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
+    timer.textContent = remaining ? t('remaining', clock) : t('expired');
     if (!remaining) {
-      document.querySelector('#paste-content').textContent = 'Este texto expirou e não pode ser recuperado.';
-      document.querySelectorAll('[data-copy]').forEach(button => { button.disabled = true; });
+      const pre = document.querySelector('#paste-content');
+      pre.classList.remove('numbered'); pre.textContent = t('expiredText');
+      document.querySelectorAll('[data-copy], #toggle-lines, #delete-paste').forEach(button => { button.disabled = true; });
       clearInterval(interval);
     }
   };
@@ -79,12 +110,12 @@ if (linesButton) linesButton.addEventListener('click', () => {
     const lines = text.split('\n');
     if (lines.length > 10000) {
       pre.classList.remove('numbered'); pre.textContent = text;
-      linesButton.textContent = 'Limite: 10 000 linhas'; return;
+      linesButton.textContent = t('lineLimit'); return;
     }
     const fragment = document.createDocumentFragment();
     lines.forEach((line, index) => {
       const span = document.createElement('span');
-      span.className = 'code-line'; span.dataset.line = String(index + 1);
+      span.className = 'code-line'; span.dataset.line = numbers.format(index + 1);
       span.textContent = line + (index < lines.length - 1 ? '\n' : '');
       fragment.appendChild(span);
     });
@@ -94,16 +125,19 @@ if (linesButton) linesButton.addEventListener('click', () => {
 });
 const deleteButton = document.querySelector('#delete-paste');
 if (deleteButton) deleteButton.addEventListener('click', async () => {
-  if (!window.confirm('Eliminar definitivamente este texto? Esta ação não pode ser revertida.')) return;
+  if (!await confirmAction(t('deleteConfirm'), true)) return;
   deleteButton.disabled = true;
+  const previous = deleteButton.textContent;
+  deleteButton.textContent = t('deleting');
   const status = document.querySelector('#delete-status');
   try {
-    const response = await fetch(`/api/v1/pastes/${encodeURIComponent(deleteButton.dataset.slug)}`, { method: 'DELETE' });
+    const response = await fetch(`/api/v1/pastes/${encodeURIComponent(deleteButton.dataset.slug)}?lang=${encodeURIComponent(locale)}`, { method: 'DELETE' });
     if (response.status !== 204) {
-      const problem = await response.json(); throw new Error(problem.error || 'Não foi possível eliminar.');
+      const problem = await response.json(); throw new RequestError(problem.error || t('deleteError'));
     }
     window.location.reload();
   } catch (problem) {
-    status.textContent = problem.message || 'Falha de ligação.'; status.hidden = false; deleteButton.disabled = false;
+    status.textContent = problem instanceof RequestError ? problem.message : t('network'); status.hidden = false;
+    deleteButton.disabled = false; deleteButton.textContent = previous;
   }
 });

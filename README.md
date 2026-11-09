@@ -1,6 +1,23 @@
-# PsMrbin · TempBin
+# PsMrbin · Timebin
 
 Partilha efémera de texto simples em **ASP.NET Core 8 + Redis**, preparada para Docker em Linux. Sem login: cole texto, guarde e partilhe um link. O conteúdo expira **1 800 segundos após a criação**. Leitura, download e consulta de metadados nunca renovam o prazo.
+
+## Interface and localization
+
+The website opens in **English** on a first visit. It also supports **Spanish (`es`)**, **Brazilian Portuguese (`pt-BR`)**, **French (`fr`)** and **Simplified Chinese (`zh-CN`)**. The header contains a native language selector and an Apply button. Changing language with unsaved editor text requires confirmation; the text is never stored locally to preserve it across a reload.
+
+- An explicit `?lang=fr` selects a language. Regional aliases such as `es-MX`, `pt` and `zh` map to the supported language. Unsupported languages fall back to English when no saved preference exists.
+- Explicit GET selections save a `.AspNetCore.Culture` preference cookie for one year. It is HttpOnly, SameSite=Lax and Secure on HTTPS. It contains only culture codes, not paste content or authentication data.
+- Request selection order is query string, saved cookie, then `Accept-Language` for API/delete requests. The website ignores the browser language on a first visit so English remains the default.
+- User-facing pages, validation messages, API errors, dialogs, copy feedback, byte counts and dates are localized. API field names, slugs, user text and raw/download bytes remain unchanged. TCP success responses remain a single URL; TCP errors use English.
+- The embedded source catalog is `src/TempBin/Localization/messages.json`. Each entry contains translations in the order `en`, `es`, `pt-BR`, `fr`, `zh-CN`. `Text.cs` provides request-scoped culture selection, English fallback and a safely encoded set of browser messages. No translation service or external JavaScript library is required.
+
+```bash
+curl -H 'Accept-Language: fr' http://localhost:8080/api/v1/pastes/abcdefgh
+curl 'http://localhost:8080/api/v1/pastes/abcdefgh?lang=zh-CN'
+```
+
+The interface follows the [anti-slop](https://github.com/miqdadbadjuber/anti-slop) reference: task-first layout, direct instructions, an unchanged Timebin mark, visible labels and no decorative service badges or invented claims. See `DESIGN.md` for the rationale and `docs/interface-review.md` for verification evidence. The reference was consulted without installing its plugin or changing agent settings.
 
 ## Início rápido com Docker
 
