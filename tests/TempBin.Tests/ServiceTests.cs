@@ -26,22 +26,24 @@ public class ServiceTests
     public async Task CollisionRetriesAndNeverOverwrites()
     {
         var store = new MemoryStore(new ManualClock());
-        await store.TryCreateAsync("abcdefgh", "original");
-        var service = new PasteService(store, new SequenceGenerator());
-        var paste = await service.CreateAsync("new", 8);
-        Assert.Equal("jkmnpqrs", paste.Slug);
-        Assert.Equal("original", (await store.FindAsync("abcdefgh")).Paste!.Content);
+        await store.TryCreateAsync("aaaaaaaaaaaa", "original");
+        var generator = new SequenceGenerator();
+        var service = new PasteService(store, generator);
+        var paste = await service.CreateAsync("new");
+        Assert.Equal("aaaaaaaaaaaaa", paste.Slug);
+        Assert.Equal(new[] { 12, 13 }, generator.Lengths);
+        Assert.Equal("original", (await store.FindAsync("aaaaaaaaaaaa")).Paste!.Content);
     }
     private sealed class SequenceGenerator : ISlugGenerator
     {
-        private int calls;
-        public string Generate(int length) => ++calls == 1 ? "abcdefgh" : "jkmnpqrs";
+        public List<int> Lengths { get; } = [];
+        public string Generate(int length) { Lengths.Add(length); return new string('a', length); }
     }
     [Fact]
     public async Task ConcurrentCreationProducesUniquePastes()
     {
         var service = new PasteService(new MemoryStore(new ManualClock()), new SlugGenerator());
-        var results = await Task.WhenAll(Enumerable.Range(0, 300).Select(i => service.CreateAsync($"content {i}", 8)));
+        var results = await Task.WhenAll(Enumerable.Range(0, 300).Select(i => service.CreateAsync($"content {i}")));
         Assert.Equal(300, results.Select(p => p.Slug).Distinct().Count());
     }
     [Fact]
@@ -49,7 +51,7 @@ public class ServiceTests
     {
         var clock = new ManualClock();
         var service = new PasteService(new MemoryStore(clock), new SlugGenerator());
-        var paste = await service.CreateAsync("test", 8);
+        var paste = await service.CreateAsync("test");
         Assert.Equal(TimeSpan.FromMinutes(30), paste.ExpiresAt - paste.CreatedAt);
         clock.Advance(TimeSpan.FromMinutes(29));
         Assert.Equal(paste.ExpiresAt, (await service.FindAsync(paste.Slug)).Paste!.ExpiresAt);

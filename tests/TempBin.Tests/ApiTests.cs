@@ -8,9 +8,9 @@ namespace TempBin.Tests;
 
 public class ApiTests
 {
-    private static async Task<JsonElement> Create(HttpClient client, string content = "Olá, mundo!", int length = 8)
+    private static async Task<JsonElement> Create(HttpClient client, string content = "Olá, mundo!")
     {
-        var response = await client.PostAsJsonAsync("/api/v1/pastes", new { content, slug_length = length });
+        var response = await client.PostAsJsonAsync("/api/v1/pastes", new { content });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(json.GetProperty("url").GetString(), response.Headers.Location!.ToString());
@@ -33,7 +33,7 @@ public class ApiTests
         var response = await client.PostAsync("/api/v1/pastes?slug_length=16", new StringContent(content, Encoding.UTF8, "text/plain"));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var slug = result.GetProperty("slug").GetString(); Assert.Equal(16, slug!.Length);
+        var slug = result.GetProperty("slug").GetString(); Assert.Equal(12, slug!.Length);
         var raw = await client.GetAsync($"/raw/{slug}");
         Assert.Equal(content, await raw.Content.ReadAsStringAsync());
         Assert.Equal("text/plain", raw.Content.Headers.ContentType!.MediaType);
@@ -68,11 +68,13 @@ public class ApiTests
         await using var app = new TestHost(); using var client = app.CreateClient();
         Assert.Equal(status, (int)(await client.PostAsync("/api/v1/pastes", new StringContent(body, Encoding.UTF8, type))).StatusCode);
     }
-    [Theory][InlineData(4)][InlineData(7)][InlineData(17)]
-    public async Task InvalidLengthIsBadRequest(int length)
+    [Theory][InlineData(4)][InlineData(7)][InlineData(8)][InlineData(16)][InlineData(17)]
+    public async Task LegacyRequestedLengthDoesNotControlGeneratedLength(int length)
     {
         await using var app = new TestHost(); using var client = app.CreateClient();
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/v1/pastes", new { content = "test", slug_length = length })).StatusCode);
+        var response = await client.PostAsJsonAsync("/api/v1/pastes", new { content = "test", slug_length = length });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(12, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("slug").GetString()!.Length);
     }
     [Theory][InlineData("/abcdefgh")][InlineData("/raw/abcdefgh")][InlineData("/download/abcdefgh")][InlineData("/api/v1/pastes/abcdefgh")][InlineData("/api/v1/pastes/abcdefgh/meta")][InlineData("/raw/INVALID!")]
     public async Task UnknownLinksAre404(string path)

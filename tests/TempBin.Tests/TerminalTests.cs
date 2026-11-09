@@ -49,7 +49,7 @@ public class TerminalTests
         await using var server = new Server(); await server.StartAsync();
         const string text = "Olá 🌍\r\nlinha dois\n";
         var result = await server.SendAsync(Encoding.UTF8.GetBytes(text));
-        Assert.Matches("^https://bin.example/raw/[a-z2-9]{8}\\n$", result);
+        Assert.Matches("^https://bin.example/raw/[a-z2-9]{12}\\n$", result);
         var slug = result.Trim().Split('/').Last();
         Assert.Equal(text, (await server.Store.FindAsync(slug)).Paste!.Content);
     }

@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using TempBin.Models;
 using TempBin.Storage;
+using TempBin.Services;
 
 namespace TempBin.Tests;
 
@@ -21,6 +22,9 @@ public sealed class ManualClock : TimeProvider
 public sealed class MemoryStore(ManualClock clock) : IPasteStore
 {
     private readonly ConcurrentDictionary<string, (Paste? Paste, string Owner)> pastes = new();
+    public int ActivePublishers { get; set; }
+    private long recentCreations;
+    public Task<int> AllocateSlugLengthAsync(string owner) => Task.FromResult(AdaptiveSlugPolicy.LengthFor(ActivePublishers, Interlocked.Increment(ref recentCreations)));
     public Task<Paste?> TryCreateAsync(string slug, string content, string owner = "")
     {
         var now = clock.GetUtcNow();

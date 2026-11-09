@@ -34,15 +34,16 @@ public sealed class PasteService(IPasteStore store, ISlugGenerator generator)
     public Task<DeleteState> DeleteAsync(string slug, string owner) => SlugGenerator.IsValid(slug)
         ? store.DeleteAsync(slug, owner) : Task.FromResult(DeleteState.Missing);
 
-    public async Task<Paste> CreateAsync(string? content, int length, string owner = "")
+    public async Task<Paste> CreateAsync(string? content, string owner = "")
     {
-        SlugGenerator.ValidateLength(length);
         if (string.IsNullOrWhiteSpace(content)) throw new PasteValidationException("error.empty");
         if (Encoding.UTF8.GetByteCount(content) > MaxBytes) throw new PasteValidationException("error.size", 413);
+        var length = await store.AllocateSlugLengthAsync(owner);
         for (var attempt = 0; attempt < 12; attempt++)
         {
             var paste = await store.TryCreateAsync(generator.Generate(length), content, owner);
             if (paste is not null) return paste;
+            length = Math.Min(AdaptiveSlugPolicy.MaximumLength, length + 1);
         }
         throw new PasteValidationException("error.retry", 503);
     }

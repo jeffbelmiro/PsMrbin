@@ -31,6 +31,8 @@ jobs:
           curl --fail http://localhost:8080/health/ready
           result=$(curl --fail -X POST http://localhost:8080/api/v1/pastes -H 'Content-Type: text/plain' --data-binary 'Docker smoke test')
           slug=$(echo "$result" | jq -r .slug)
+          test "${#slug}" -ge 12
+          test "${#slug}" -le 16
           test "$(curl --fail "http://localhost:8080/raw/$slug")" = 'Docker smoke test'
           curl --fail "http://localhost:8080/$slug" > /dev/null
           curl --fail "http://localhost:8080/api/v1/pastes/$slug" | jq -e '.content == "Docker smoke test"'
@@ -43,5 +45,8 @@ jobs:
           code=$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST "http://localhost:8080/delete?slug=$slug")
           test "$code" = '204'
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://localhost:8080/raw/$slug")" = '410'
+          curl --fail http://localhost:8080/disclaimer > /dev/null
+      - name: Verify result-page curl examples
+        run: python3 tests/smoke_examples.py
       - if: always()
         run: docker compose down

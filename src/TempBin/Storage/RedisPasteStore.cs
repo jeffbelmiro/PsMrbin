@@ -8,6 +8,7 @@ namespace TempBin.Storage;
 
 public interface IPasteStore
 {
+    Task<int> AllocateSlugLengthAsync(string owner);
     Task<Paste?> TryCreateAsync(string slug, string content, string owner = "");
     Task<PasteLookup> FindAsync(string slug);
     Task<DeleteState> DeleteAsync(string slug, string owner);
@@ -32,6 +33,35 @@ public sealed class RedisPasteStore(IConnectionMultiplexer connection, IOptions<
 {
     private readonly IDatabase db = connection.GetDatabase();
     private RedisKey[] Keys(string slug) => [$"{options.Value.KeyPrefix}{{{slug}}}:data", $"{options.Value.KeyPrefix}{{{slug}}}:seen"];
+    private const string TrafficScript = """
+        local t = redis.call('TIME')
+        local now = tonumber(t[1])
+        local hour = math.floor(now / 3600)
+        redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - 300)
+        redis.call('ZADD', KEYS[1], now, ARGV[1])
+        redis.call('EXPIRE', KEYS[1], 300)
+        redis.call('HINCRBY', KEYS[2], tostring(hour), 1)
+        local fields = redis.call('HGETALL', KEYS[2])
+        local creations = 0
+        for i = 1, #fields, 2 do
+            if tonumber(fields[i]) < hour - 24 then
+                redis.call('HDEL', KEYS[2], fields[i])
+            else
+                creations = creations + tonumber(fields[i + 1])
+            end
+        end
+        redis.call('EXPIRE', KEYS[2], 90000)
+        return {redis.call('ZCARD', KEYS[1]), creations}
+        """;
+
+    public async Task<int> AllocateSlugLengthAsync(string owner)
+    {
+        var prefix = options.Value.KeyPrefix;
+        var result = (RedisResult[])(await db.ScriptEvaluateAsync(TrafficScript,
+            [$"{prefix}{{traffic}}:publishers", $"{prefix}{{traffic}}:creations"],
+            [string.IsNullOrEmpty(owner) ? "unknown" : owner]))!;
+        return AdaptiveSlugPolicy.LengthFor((long)result[0], (long)result[1]);
+    }
     private const string CreateScript = """
         if redis.call('EXISTS', KEYS[1], KEYS[2]) > 0 then return nil end
         local t = redis.call('TIME')

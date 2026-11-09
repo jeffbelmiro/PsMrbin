@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TempBin.Models;
 using TempBin.Storage;
+using TempBin.Services;
 using Xunit;
 
 namespace TempBin.Tests;
@@ -17,6 +18,46 @@ public sealed class RedisFactAttribute : FactAttribute
 
 public class RedisTests
 {
+    [RedisFact]
+    public async Task TrafficSizingIsAtomicSharedAndExpiresIdentities()
+    {
+        var (connection, store, prefix) = await Connect(); using var _ = connection;
+        var db = connection.GetDatabase();
+        RedisKey users = $"{prefix}{{traffic}}:publishers", volume = $"{prefix}{{traffic}}:creations";
+        try
+        {
+            var lengths = await Task.WhenAll(Enumerable.Range(0, 100).Select(i => store.AllocateSlugLengthAsync($"publisher-{i}")));
+            Assert.Equal(99, lengths.Count(length => length == 12));
+            Assert.Single(lengths, length => length == 13);
+            Assert.Equal(13, await store.AllocateSlugLengthAsync("publisher-0"));
+            Assert.Equal(100, await db.SortedSetLengthAsync(users));
+            var time = (RedisResult[])(await db.ExecuteAsync("TIME"))!;
+            await db.SortedSetAddAsync(users, "stale", (long)time[0] - 301);
+            await store.AllocateSlugLengthAsync("publisher-0");
+            Assert.Null(await db.SortedSetScoreAsync(users, "stale"));
+            Assert.InRange((await db.KeyTimeToLiveAsync(users))!.Value.TotalSeconds, 298, 300);
+            Assert.InRange((await db.KeyTimeToLiveAsync(volume))!.Value.TotalSeconds, 89998, 90000);
+        }
+        finally { await db.KeyDeleteAsync([users, volume]); }
+    }
+    [RedisFact]
+    public async Task TrafficVolumeUsesRecentBucketsAndNeverExceedsMaximumLength()
+    {
+        var (connection, store, prefix) = await Connect(); using var _ = connection;
+        var db = connection.GetDatabase();
+        RedisKey users = $"{prefix}{{traffic}}:publishers", volume = $"{prefix}{{traffic}}:creations";
+        try
+        {
+            var time = (RedisResult[])(await db.ExecuteAsync("TIME"))!;
+            var hour = (long)time[0] / 3600;
+            await db.HashSetAsync(volume, [new HashEntry((hour - 25).ToString(), 1000000000000000L), new HashEntry(hour.ToString(), 1000000)]);
+            Assert.Equal(AdaptiveSlugPolicy.LengthFor(1, 1000001), await store.AllocateSlugLengthAsync("publisher"));
+            Assert.False(await db.HashExistsAsync(volume, (hour - 25).ToString()));
+            await db.HashSetAsync(volume, hour.ToString(), 1000000000000000L);
+            Assert.Equal(16, await store.AllocateSlugLengthAsync("publisher"));
+        }
+        finally { await db.KeyDeleteAsync([users, volume]); }
+    }
     private static async Task<(ConnectionMultiplexer, RedisPasteStore, string)> Connect()
     {
         var connection = await ConnectionMultiplexer.ConnectAsync(Environment.GetEnvironmentVariable("TEMPBIN_TEST_REDIS")!);

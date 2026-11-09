@@ -51,7 +51,7 @@ if (form) {
     try {
       const response = await fetch(`/api/v1/pastes?lang=${encodeURIComponent(locale)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: input.value, slug_length: Number(document.querySelector('#slug-length').value) })
+        body: JSON.stringify({ content: input.value })
       });
       const result = await response.json();
       if (!response.ok) throw new RequestError(result.error || t('saveError'));

@@ -22,13 +22,13 @@ public static class TempBinEndpoints
     {
         app.MapGet("/", (IOptions<TempBinOptions> options, IOptions<NetcatOptions> netcat) => Results.Content(Html.Home(options.Value.PublicOrigin.TrimEnd('/'), netcat.Value), "text/html; charset=utf-8"));
         app.MapGet("/robots.txt", () => Results.Text("User-agent: *\nDisallow: /\n", "text/plain"));
+        app.MapGet("/disclaimer", () => Results.Content(Html.Disclaimer(), "text/html; charset=utf-8"));
         app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
         app.MapGet("/health/ready", async (IPasteStore store) => await store.IsHealthyAsync()
             ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503));
         app.MapPost("/api/v1/pastes", async (HttpRequest request, PasteService service, ClientIdentity identity, IOptions<TempBinOptions> options) =>
         {
             string? content;
-            var length = 8;
             var mediaType = request.ContentType?.Split(';')[0].Trim().ToLowerInvariant();
             if (mediaType is not ("application/json" or "text/plain"))
                 return Results.Json(new { error = Text.Get("error.media") }, statusCode: 415);
@@ -51,17 +51,12 @@ public static class TempBinEndpoints
                 var payload = JsonSerializer.Deserialize<CreatePasteRequest>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 if (payload is null) throw new PasteValidationException("error.json");
                 content = payload.Content;
-                length = payload.SlugLength;
             }
             else
             {
                 content = body;
-                if (request.Query.TryGetValue("slug_length", out var requested))
-                {
-                    if (!int.TryParse(requested, out length)) throw new PasteValidationException("error.slugValue");
-                }
             }
-            var paste = await service.CreateAsync(content, length, identity.Fingerprint(request.HttpContext.Connection.RemoteIpAddress));
+            var paste = await service.CreateAsync(content, identity.Fingerprint(request.HttpContext.Connection.RemoteIpAddress));
             var origin = options.Value.PublicOrigin.TrimEnd('/');
             return Results.Created($"{origin}/{paste.Slug}", Links(paste, origin));
         }).RequireRateLimiting("create").Accepts<CreatePasteRequest>("application/json", "text/plain")

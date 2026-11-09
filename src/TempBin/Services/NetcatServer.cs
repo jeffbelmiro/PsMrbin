@@ -92,7 +92,7 @@ public sealed class NetcatServer(IServiceProvider services, IOptions<NetcatOptio
                 }
                 total.Token.ThrowIfCancellationRequested();
                 var text = new UTF8Encoding(false, true).GetString(content.GetBuffer(), 0, (int)content.Length);
-                var paste = await services.GetRequiredService<PasteService>().CreateAsync(text, 8, identity.Fingerprint(ip));
+                var paste = await services.GetRequiredService<PasteService>().CreateAsync(text, identity.Fingerprint(ip));
                 await ReplyAsync(stream, $"{options.Value.PublicOrigin.TrimEnd('/')}/raw/{paste.Slug}", total.Token);
             }
             catch (PasteValidationException ex) { await SafeErrorAsync(stream, $"ERROR {ex.Status}: {Text.Get(ex.Message, "en")}", total.Token); }
