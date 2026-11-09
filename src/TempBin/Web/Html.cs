@@ -11,9 +11,9 @@ public static class Html
     private static string Shell(string body, string title = "Texto passageiro. Partilha simples.") => $$"""
         <!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         <meta name="robots" content="noindex,nofollow"><meta name="description" content="Partilhe texto durante 30 minutos. Sem conta. Pelo navegador, curl ou API.">
-        <title>TempBin · {{E(title)}}</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
-        <body><div class="ambient"></div><header class="topbar"><a class="brand" href="/" aria-label="TempBin início"><span class="logo">t<span>↗</span></span>TempBin<span class="beta">EPHEMERAL TEXT</span></a><span class="status"><i></i> Sem conta. Sem permanência.</span></header>
-        <main>{{body}}</main><footer><a class="brand-small" href="/">TempBin</a><span>Feito para partilhar. Concebido para desaparecer.</span><a href="/openapi">OpenAPI ↗</a></footer></body></html>
+        <title>Timebin · {{E(title)}}</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+        <body><div class="ambient"></div><header class="topbar"><a class="brand" href="/" aria-label="Timebin início"><span class="logo">t<span>↗</span></span>Timebin<span class="beta">EPHEMERAL TEXT</span></a><span class="status"><i></i> Sem conta. Sem permanência.</span></header>
+        <main>{{body}}</main><footer><a class="brand-small" href="/">Timebin</a><span>Feito para partilhar. Concebido para desaparecer.</span><a href="/openapi">OpenAPI ↗</a></footer></body></html>
         """;
 
     public static string Home(string origin, NetcatOptions? netcat = null) => Shell($$"""
