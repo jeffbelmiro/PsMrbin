@@ -28,8 +28,8 @@ public class LocalizationTests
                 Assert.Equal(expected, System.Text.RegularExpressions.Regex.Matches(value, @"\{\d+\}").Select(m => m.Value).Order().ToArray());
         }
     }
-    [Theory][InlineData("en", "Share text for 30 minutes.")][InlineData("es", "Comparte texto durante 30 minutos.")]
-    [InlineData("pt-BR", "Compartilhe texto por 30 minutos.")][InlineData("fr", "Partagez du texte pendant 30 minutes.")][InlineData("zh-CN", "分享文本，保留 30 分钟。")]
+    [Theory][InlineData("en", "Share text. Set the time.")][InlineData("es", "Comparte texto. Elige el plazo.")]
+    [InlineData("pt-BR", "Compartilhe texto. Escolha o prazo.")][InlineData("fr", "Partagez du texte. Choisissez la durée.")][InlineData("zh-CN", "分享文本，自定时限。")]
     public async Task HomepageIsRenderedInEachLanguage(string locale, string headline)
     {
         await using var app = new TestHost(); using var client = app.CreateClient();
@@ -38,6 +38,9 @@ public class LocalizationTests
         var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
         Assert.Contains($"<html lang=\"{locale}\">", html);
         Assert.Contains(headline, html);
+        Assert.Contains("value=\"1800\" selected", html);
+        foreach (var seconds in new[] { 28800, 43200, 86400 })
+            Assert.Contains($"value=\"{seconds}\"", html);
         Assert.Contains("<span class=\"logo\" aria-hidden=\"true\">t<span>↗</span></span>", html);
         Assert.Contains("Timebin", html);
         Assert.Equal(locale, response.Content.Headers.ContentLanguage.Single());

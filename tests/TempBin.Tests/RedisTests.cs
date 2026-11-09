@@ -88,6 +88,24 @@ public class RedisTests
         finally { await db.KeyDeleteAsync([Data(prefix, slug), Seen(prefix, slug)]); }
     }
     [RedisFact]
+    public async Task LongRetentionUsesRedisTtlAndKeepsMarkerBeyondExpiry()
+    {
+        var (connection, store, prefix) = await Connect(); using var _ = connection;
+        const string slug = "abcdefgh"; var db = connection.GetDatabase();
+        try
+        {
+            var paste = await store.TryCreateAsync(slug, "synthetic", ttlSeconds: 86400);
+            Assert.NotNull(paste);
+            Assert.Equal(TimeSpan.FromHours(24), paste!.ExpiresAt - paste.CreatedAt);
+            var before = await db.KeyTimeToLiveAsync(Data(prefix, slug));
+            Assert.InRange(before!.Value.TotalSeconds, 86398, 86400);
+            Assert.Equal(paste, (await store.FindAsync(slug)).Paste);
+            Assert.True(await db.KeyTimeToLiveAsync(Data(prefix, slug)) <= before);
+            Assert.InRange((await db.KeyTimeToLiveAsync(Seen(prefix, slug)))!.Value.TotalSeconds, 89998, 90000);
+        }
+        finally { await db.KeyDeleteAsync([Data(prefix, slug), Seen(prefix, slug)]); }
+    }
+    [RedisFact]
     public async Task ConcurrentCollisionHasExactlyOneWinner()
     {
         var (connection, store, prefix) = await Connect(); using var _ = connection;
@@ -124,7 +142,7 @@ public class RedisTests
         try
         {
             await store.TryCreateAsync(slug, "temporary");
-            // Shorten only the test key's TTL; production expiry remains hardcoded to 1800 seconds.
+            // Shorten only the test key's TTL; the production default remains 1800 seconds.
             await db.KeyExpireAsync(Data(prefix, slug), TimeSpan.FromMilliseconds(5));
             await Task.Delay(40);
             Assert.False(await db.KeyExistsAsync(Data(prefix, slug)));

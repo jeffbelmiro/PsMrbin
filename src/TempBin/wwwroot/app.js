@@ -51,7 +51,7 @@ if (form) {
     try {
       const response = await fetch(`/api/v1/pastes?lang=${encodeURIComponent(locale)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: input.value })
+        body: JSON.stringify({ content: input.value, ttlSeconds: Number(document.querySelector("#ttl").value) })
       });
       const result = await response.json();
       if (!response.ok) throw new RequestError(result.error || t('saveError'));
@@ -88,7 +88,7 @@ if (timer) {
   document.querySelector('#expires-at').textContent = new Date(deadline).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'long' });
   const tick = () => {
     const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    const clock = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
+    const clock = `${Math.floor(remaining / 3600).toString().padStart(2, '0')}:${Math.floor((remaining % 3600) / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
     timer.textContent = remaining ? t('remaining', clock) : t('expired');
     if (!remaining) {
       const pre = document.querySelector('#paste-content');

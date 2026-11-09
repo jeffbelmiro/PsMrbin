@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "checks": {
+    "publicTree": ".githooks/check-public-tree",
+    "secrets": {
+      "tool": "gitleaks",
+      "config": ".gitleaks.toml",
+      "redact": true
+    }
+  },
+  "localContext": ".ai/",
+  "runtimeSecrets": "outside-checkout",
+  "requiredIgnoredPaths": [
+    ".ai/rules/security.md",
+    ".ai/skills/README.md",
+    ".ai/design/DESIGN.md",
+    ".env",
+    ".secrets/probe"
+  ]
+}

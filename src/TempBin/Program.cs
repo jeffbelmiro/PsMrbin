@@ -1,3 +1,4 @@
+using TempBin.Guards;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
@@ -78,12 +79,12 @@ app.Use(async (context, next) =>
         context.Response.Cookies.Append(CookieRequestCultureProvider.DefaultCookieName,
             CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(language)),
             new CookieOptions { HttpOnly = true, Secure = context.Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromDays(365), Path = "/" });
-    SecurityHeaders(context.Response);
+    ResponseSecurity.Apply(context.Response);
     try { await next(); }
     catch (Exception ex) when (!context.Response.HasStarted)
     {
         context.Response.Clear();
-        SecurityHeaders(context.Response);
+        ResponseSecurity.Apply(context.Response);
         context.Response.Headers.ContentLanguage = Text.Locale;
         context.Response.StatusCode = ex switch
         {
@@ -111,12 +112,4 @@ app.UseSwagger();
 app.MapGet("/openapi", () => Results.Redirect("/swagger/v1/swagger.json"));
 app.MapTempBin();
 app.Run();
-static void SecurityHeaders(HttpResponse response)
-{
-    response.Headers.CacheControl = "no-store";
-    response.Headers.XContentTypeOptions = "nosniff";
-    response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
-    response.Headers["Referrer-Policy"] = "no-referrer";
-    response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
-}
 public partial class Program { }

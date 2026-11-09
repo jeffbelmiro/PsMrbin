@@ -1,4 +1,4 @@
-name: Build, test and Docker
+name: DevSecOps - build, security and Docker
 on:
   push:
   pull_request:
@@ -15,6 +15,8 @@ jobs:
           persist-credentials: false
       - name: Reject local-only paths in the public tree
         run: bash .githooks/check-public-tree
+      - name: Lint AI security policy
+        run: python3 .githooks/check-ai-policy.py
       - name: Install verified Gitleaks release
         shell: bash
         run: |
@@ -41,7 +43,7 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: dotnet restore
-      - run: dotnet build -c Release --no-restore
+      - run: dotnet build -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest
       - run: dotnet test -c Release --no-build --logger trx
         env:
           TEMPBIN_TEST_REDIS: localhost:6379
@@ -82,6 +84,9 @@ jobs:
           test "$code" = '204'
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://localhost:8080/raw/$slug")" = '410'
           curl --fail http://localhost:8080/disclaimer > /dev/null
+          for ttl in 28800 43200 86400; do
+            curl --fail -X POST "http://localhost:8080/api/v1/pastes?ttl_seconds=$ttl" -H 'Content-Type: text/plain' --data-binary 'Synthetic retention smoke test' | jq -e --argjson ttl "$ttl" '.ttl_seconds == $ttl'
+          done
       - name: Verify result-page curl examples
         run: python3 tests/smoke_examples.py
       - if: always()

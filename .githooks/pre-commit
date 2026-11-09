@@ -3,6 +3,14 @@ set -eu
 cd "$(git rev-parse --show-toplevel)"
 sh .githooks/check-public-tree --staged
 
+python_bin="${TIMEBIN_PYTHON_BIN:-$(git config --path timebin.pythonPath || true)}"
+python_bin="${python_bin:-python3}"
+if ! command -v "$python_bin" >/dev/null 2>&1; then
+  echo 'Python 3 is required for the AI policy gate. Set timebin.pythonPath to its absolute path.' >&2
+  exit 1
+fi
+"$python_bin" .githooks/check-ai-policy.py
+
 scanner="${GITLEAKS_BIN:-$(git config --path timebin.gitleaksPath || true)}"
 scanner="${scanner:-gitleaks}"
 if ! command -v "$scanner" >/dev/null 2>&1; then

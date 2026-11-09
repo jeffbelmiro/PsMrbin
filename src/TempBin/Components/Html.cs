@@ -31,6 +31,7 @@ public static class Html
         <div class="panel-heading"><label for="content">{{T("editor")}}</label><span class="muted">{{T("plainUtf8")}}</span></div>
         <textarea id="content" name="content" placeholder="{{T("placeholder")}}" spellcheck="false" required aria-describedby="editor-help byte-count"></textarea>
         <div class="editor-meta"><span id="editor-help">{{T("automaticLinks")}}</span><span id="byte-count" aria-live="polite">0 / {{PasteService.MaxBytes.ToString("N0", CultureInfo.CurrentCulture)}} {{T("js.bytes")}}</span></div>
+        <div class="retention-control"><label for="ttl">{{T("retention")}}</label> <select id="ttl" name="ttlSeconds"><option value="1800" selected>{{T("retention.default")}}</option><option value="28800">8h</option><option value="43200">12h</option><option value="86400">24h</option></select></div>
         <div class="editor-controls"><span class="muted">{{T("adaptiveLinks")}}</span>
         <button id="save" class="primary" type="submit">{{T("save")}}</button></div>
         <p id="form-error" class="error" role="alert" hidden></p></form></section>

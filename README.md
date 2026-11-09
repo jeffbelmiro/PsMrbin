@@ -1,10 +1,10 @@
 # Timebin
 
-**Share text for 30 minutes. From your browser or your terminal.**
+**Share text. Set the time. From your browser or your terminal.**
 
 A log your teammate needs to see. A JSON document for the next API call. A note that only matters right now. Timebin turns plain text into a shareable link, without asking anyone to create an account.
 
-Paste, create a link, and get back to your work. The text expires 30 minutes after it is saved.
+Paste, create a link, and get back to your work. The text expires after 30 minutes by default. Choose 8, 12 or 24 hours before saving when you need more time. Reads never extend the deadline.
 
 ## One paste, ready for your workflow
 
@@ -74,7 +74,7 @@ This example requires jq. Replace the sample API endpoint and add its required a
 
 **Anyone with a link can read its text.** Keep passwords, credentials and personal information out of pastes. Random links make discovery harder; they do not provide authentication or end-to-end encryption.
 
-New slugs contain **12–16 readable characters**, generated cryptographically. Timebin chooses the length from recent publishing activity and creation volume, using counters shared through Redis. Collision checks are atomic, existing content is never replaced, and reserved slugs are not immediately reused. Older 8–16 character links remain readable until they expire.
+New slugs contain **12â€“16 readable characters**, generated cryptographically. Timebin chooses the length from recent publishing activity and creation volume, using counters shared through Redis. Collision checks are atomic, existing content is never replaced, and reserved slugs are not immediately reused. Older 8â€“16 character links remain readable until they expire.
 
 Content expires after **1,800 seconds**. A marker without paste content remains for up to 24 hours from creation to identify expired/deleted links and delay reuse. Downloads, screenshots and copies made by recipients remain outside Timebin's control. Expired text cannot be recovered through the service.
 
@@ -121,3 +121,23 @@ After installing Gitleaks from its official releases, enable the local commit gu
 The app uses an English first-visit default and supports `?lang=en`, `es`, `pt-BR`, `fr` or `zh-CN`. API errors also accept `Accept-Language`. Text and API property names are never translated. New link lengths start at 12 and increase at 100, 1,000, 10,000 and 100,000 recent publishing identities, with a second sizing budget based on recent creation volume; older valid links continue to work.
 
 Have a bug or an improvement in mind? [Open a project issue](https://github.com/jeffbelmiro/PsMrbin/issues). Include the behavior you expected and steps to reproduce it. Do not include sensitive paste content.
+
+### Choose your sharing window
+
+The browser defaults to **30 minutes** on every new paste. Select **8h**, **12h** or **24h** before saving. The deadline is fixed at creation and applies to every output.
+
+JSON clients can send `{"content":"Hello!","ttlSeconds":28800}` (allowed seconds: `1800`, `28800`, `43200`, `86400`). Plain-text clients can POST to `/api/v1/pastes?ttl_seconds=28800`. Omission keeps 30 minutes; unsupported values return 400. The TCP/netcat interface keeps the 30-minute default.
+
+### Repository layout
+
+- `src/TempBin/`: ASP.NET application; Api (routes), Components and wwwroot (UI), Guards (security), Models, Utils (services) and Storage.
+- `tests/TempBin.Tests/`: unit, API and security tests; Redis integration tests run in CI.
+- `.github/workflows/`: security scanning, tests and container validation.
+- `.githooks/` and `ai-security-gate.json`: local public-tree and secret checks.
+- `.ai/` (ignored): local rules, design references, skills, agent instructions and workflows. Never store credentials here or include these files in builds.
+
+Real secrets belong outside the checkout and outside AI context, mounted at runtime via the example secrets overlay. Ignoring a directory prevents Git tracking; it does not restrict an AI tool's filesystem access. See SECURITY.md.
+
+`config/security-policies/policies.json` maps the enforced public security policies to their implementation. It contains no credentials. The DevSecOps workflow runs secret scanning, the AI policy lint, .NET static analyzers, security tests and Docker HTTP smoke checks. Local agent files are reference instructions only; they do not start autonomous processes.
+
+For local commits, install Python 3 and Gitleaks, enable `git config core.hooksPath .githooks`, and set `git config timebin.pythonPath /absolute/path/to/python3` if Python is not on PATH. The pre-commit hook validates the public-tree rules, `ai-security-gate.json` and staged secrets. CI repeats the checks independently.

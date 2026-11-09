@@ -37,6 +37,8 @@ docs/
 .agents/
 .agent/
 .ai/
+# Local rules, agents, workflows, skills, design and docs.
+# Real credentials must remain outside the checkout and AI context.
 .codex/
 .claude/
 .cursor/

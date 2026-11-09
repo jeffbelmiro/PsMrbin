@@ -9,7 +9,7 @@ namespace TempBin.Storage;
 public interface IPasteStore
 {
     Task<int> AllocateSlugLengthAsync(string owner);
-    Task<Paste?> TryCreateAsync(string slug, string content, string owner = "");
+    Task<Paste?> TryCreateAsync(string slug, string content, string owner = "", int ttlSeconds = PasteService.TtlSeconds);
     Task<PasteLookup> FindAsync(string slug);
     Task<DeleteState> DeleteAsync(string slug, string owner);
     Task<bool> IsHealthyAsync();
@@ -66,10 +66,10 @@ public sealed class RedisPasteStore(IConnectionMultiplexer connection, IOptions<
         if redis.call('EXISTS', KEYS[1], KEYS[2]) > 0 then return nil end
         local t = redis.call('TIME')
         local now = t[1] * 1000 + math.floor(t[2] / 1000)
-        redis.call('HSET', KEYS[1], 'content', ARGV[1], 'created', now, 'expires', now + 1800000, 'size', ARGV[2], 'version', 1, 'owner', ARGV[3])
-        redis.call('PEXPIREAT', KEYS[1], now + 1800000)
-        redis.call('SET', KEYS[2], '1', 'PXAT', now + 86400000)
-        return {tostring(now), tostring(now + 1800000)}
+        redis.call('HSET', KEYS[1], 'content', ARGV[1], 'created', now, 'expires', now + tonumber(ARGV[4]), 'size', ARGV[2], 'version', 1, 'owner', ARGV[3])
+        redis.call('PEXPIREAT', KEYS[1], now + tonumber(ARGV[4]))
+        redis.call('SET', KEYS[2], '1', 'PXAT', now + math.max(86400000, tonumber(ARGV[4]) + 3600000))
+        return {tostring(now), tostring(now + tonumber(ARGV[4]))}
         """;
     private const string ReadScript = """
         if redis.call('EXISTS', KEYS[1]) == 0 then
@@ -100,10 +100,11 @@ public sealed class RedisPasteStore(IConnectionMultiplexer connection, IOptions<
         return 'deleted'
         """;
 
-    public async Task<Paste?> TryCreateAsync(string slug, string content, string owner = "")
+    public async Task<Paste?> TryCreateAsync(string slug, string content, string owner = "", int ttlSeconds = PasteService.TtlSeconds)
     {
+        PasteService.ValidateTtl(ttlSeconds);
         var size = Encoding.UTF8.GetByteCount(content);
-        var result = await db.ScriptEvaluateAsync(CreateScript, Keys(slug), [content, size, owner]);
+        var result = await db.ScriptEvaluateAsync(CreateScript, Keys(slug), [content, size, owner, (long)ttlSeconds * 1000]);
         if (result.IsNull) return null;
         var values = (RedisResult[])result!;
         return new Paste(slug, content, DateTimeOffset.FromUnixTimeMilliseconds((long)values[0]),

@@ -19,7 +19,7 @@ public class InformationExposureTests
         public const string Canary = "internal-only-error-marker-for-test";
         private static RedisConnectionException Failure() => new(ConnectionFailureType.UnableToConnect, Canary);
         public Task<int> AllocateSlugLengthAsync(string owner) => throw Failure();
-        public Task<Paste?> TryCreateAsync(string slug, string content, string owner = "") => throw Failure();
+        public Task<Paste?> TryCreateAsync(string slug, string content, string owner = "", int ttlSeconds = TempBin.Services.PasteService.TtlSeconds) => throw Failure();
         public Task<PasteLookup> FindAsync(string slug) => throw Failure();
         public Task<DeleteState> DeleteAsync(string slug, string owner) => throw Failure();
         public Task<bool> IsHealthyAsync() => throw Failure();

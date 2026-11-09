@@ -25,10 +25,10 @@ public sealed class MemoryStore(ManualClock clock) : IPasteStore
     public int ActivePublishers { get; set; }
     private long recentCreations;
     public Task<int> AllocateSlugLengthAsync(string owner) => Task.FromResult(AdaptiveSlugPolicy.LengthFor(ActivePublishers, Interlocked.Increment(ref recentCreations)));
-    public Task<Paste?> TryCreateAsync(string slug, string content, string owner = "")
+    public Task<Paste?> TryCreateAsync(string slug, string content, string owner = "", int ttlSeconds = PasteService.TtlSeconds)
     {
         var now = clock.GetUtcNow();
-        var paste = new Paste(slug, content, now, now.AddMinutes(30), Encoding.UTF8.GetByteCount(content));
+        var paste = new Paste(slug, content, now, now.AddSeconds(ttlSeconds), Encoding.UTF8.GetByteCount(content));
         return Task.FromResult(pastes.TryAdd(slug, (paste, owner)) ? paste : null);
     }
     public Task<PasteLookup> FindAsync(string slug)

@@ -28,20 +28,26 @@ public sealed class PasteService(IPasteStore store, ISlugGenerator generator)
 {
     public const int MaxBytes = 256 * 1024;
     public const int TtlSeconds = 1800;
+    public static void ValidateTtl(int seconds)
+    {
+        if (seconds is not (1800 or 28800 or 43200 or 86400))
+            throw new PasteValidationException("error.ttl");
+    }
     public Task<PasteLookup> FindAsync(string slug) => SlugGenerator.IsValid(slug)
         ? store.FindAsync(slug) : Task.FromResult(new PasteLookup(PasteState.Missing));
 
     public Task<DeleteState> DeleteAsync(string slug, string owner) => SlugGenerator.IsValid(slug)
         ? store.DeleteAsync(slug, owner) : Task.FromResult(DeleteState.Missing);
 
-    public async Task<Paste> CreateAsync(string? content, string owner = "")
+    public async Task<Paste> CreateAsync(string? content, string owner = "", int ttlSeconds = TtlSeconds)
     {
+        ValidateTtl(ttlSeconds);
         if (string.IsNullOrWhiteSpace(content)) throw new PasteValidationException("error.empty");
         if (Encoding.UTF8.GetByteCount(content) > MaxBytes) throw new PasteValidationException("error.size", 413);
         var length = await store.AllocateSlugLengthAsync(owner);
         for (var attempt = 0; attempt < 12; attempt++)
         {
-            var paste = await store.TryCreateAsync(generator.Generate(length), content, owner);
+            var paste = await store.TryCreateAsync(generator.Generate(length), content, owner, ttlSeconds);
             if (paste is not null) return paste;
             length = Math.Min(AdaptiveSlugPolicy.MaximumLength, length + 1);
         }
